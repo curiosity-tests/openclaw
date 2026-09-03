@@ -161,6 +161,33 @@ describe("release-check", () => {
             : "release-check: packed dist/plugin-sdk directory not found.",
         );
       }
+
+      // The historical frozen target predates the worker-bundle contract entirely.
+      // It must continue through the release checks instead of loading trusted tooling's contract.
+      rmSync(join(root, "src/shared/worker-bundle-hash.ts"));
+      rmSync(join(packedRoot, "dist/worker"), { recursive: true, force: true });
+      const noWorkerTarball = join(root, "target-without-workers.tgz");
+      create({ cwd: root, file: noWorkerTarball, gzip: true, sync: true }, ["package"]);
+      const noWorkerResult = spawnSync(
+        process.execPath,
+        [
+          "--import",
+          join(toolingRoot, "scripts/tsx.mjs"),
+          join(toolingRoot, "scripts/release-check.ts"),
+          "--tarball",
+          noWorkerTarball,
+        ],
+        {
+          cwd: root,
+          encoding: "utf8",
+          env: { ...process.env, TSX_TSCONFIG_PATH: join(toolingRoot, "tsconfig.json") },
+        },
+      );
+      expect(noWorkerResult.status).toBe(1);
+      expect(noWorkerResult.stderr).toContain(
+        "release-check: packed dist/plugin-sdk directory not found.",
+      );
+      expect(noWorkerResult.stderr).not.toContain("Worker deploy artifact");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

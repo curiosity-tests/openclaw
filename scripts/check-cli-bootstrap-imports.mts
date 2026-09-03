@@ -359,7 +359,7 @@ export function collectWorkerDeployArtifactErrors(params: CliBootstrapCheckParam
   const entrypoints = (params.workerDeployEntrypoints ?? WORKER_DEPLOY_ENTRYPOINTS).map(
     (entrypoint) => path.resolve(rootDir, entrypoint),
   );
-  const artifactDir = path.dirname(entrypoints[0]!);
+  const artifactDir = path.resolve(rootDir, "dist/worker");
   const artifactNames = new Set(
     entrypoints.flatMap((entrypoint) => {
       const name = path.basename(entrypoint);
@@ -404,6 +404,9 @@ export function collectWorkerDeployArtifactErrors(params: CliBootstrapCheckParam
       }
     }
   } catch {
+    if (entrypoints.length === 0) {
+      return [];
+    }
     errors.push(
       `Worker deploy artifact directory ${path.relative(rootDir, artifactDir)} is unreadable.`,
     );

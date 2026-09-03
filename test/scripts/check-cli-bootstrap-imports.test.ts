@@ -150,6 +150,19 @@ describe("check-cli-bootstrap-imports", () => {
     expect(collectWorkerDeployArtifactErrors({ rootDir: root })).toEqual([]);
   });
 
+  it("accepts no worker artifact directory when the target has no worker contract", () => {
+    const root = makeTempRoot();
+
+    expect(
+      collectWorkerDeployArtifactErrors({ rootDir: root, workerDeployEntrypoints: [] }),
+    ).toEqual([]);
+
+    writeFixture(root, "dist/worker/unexpected.mjs", "export {};\n");
+    expect(
+      collectWorkerDeployArtifactErrors({ rootDir: root, workerDeployEntrypoints: [] }),
+    ).toEqual(["Worker deploy artifact emits unstaged runtime asset dist/worker/unexpected.mjs."]);
+  });
+
   it("rejects worker package imports and dependency manifests", () => {
     const root = makeTempRoot();
     writeFixture(

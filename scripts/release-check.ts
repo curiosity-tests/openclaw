@@ -1403,18 +1403,18 @@ async function main() {
 async function verifyPackedContents(results: NpmPackResult[], packedRoot: string): Promise<void> {
   // WORKER_BUNDLE_*_PATH exports declare the target's sealed deploy artifacts.
   // Trusted tooling may be newer than the frozen target in the working directory.
-  const workerBundle = await tsImport(
-    pathToFileURL(resolve("src/shared/worker-bundle-hash.ts")).href,
-    import.meta.url,
-  );
-  const workerDeployEntrypoints = Object.entries(workerBundle)
-    .filter(([name]) => /^WORKER_BUNDLE_.*_PATH$/u.test(name))
-    .map(([name, value]) => {
-      if (typeof value !== "string") {
-        throw new Error(`release-check: target worker artifact ${name} must be a path string.`);
-      }
-      return `dist/worker/${value}`;
-    });
+  // Older frozen targets predate this contract and therefore declare no worker artifacts.
+  const workerBundlePath = resolve("src/shared/worker-bundle-hash.ts");
+  const workerDeployEntrypoints = existsSync(workerBundlePath)
+    ? Object.entries(await tsImport(pathToFileURL(workerBundlePath).href, import.meta.url))
+        .filter(([name]) => /^WORKER_BUNDLE_.*_PATH$/u.test(name))
+        .map(([name, value]) => {
+          if (typeof value !== "string") {
+            throw new Error(`release-check: target worker artifact ${name} must be a path string.`);
+          }
+          return `dist/worker/${value}`;
+        })
+    : [];
   checkCliBootstrapExternalImports({
     rootDir: packedRoot,
     workerDeployEntrypoints,
