@@ -228,16 +228,6 @@ function discoverStaticExtensionRuntimeOverlayAssets(params: StaticExtensionAsse
 }
 
 /**
- * Lists generated dist output paths for declared static extension assets.
- */
-export function listStaticExtensionAssetOutputs(params: StaticExtensionAssetParams = {}) {
-  const assets = params.assets ?? discoverStaticExtensionAssets(params);
-  return assets
-    .map(({ dest }) => dest.replace(/\\/g, "/"))
-    .toSorted((left, right) => left.localeCompare(right));
-}
-
-/**
  * Lists source file paths for declared static extension assets.
  */
 export function listStaticExtensionAssetSources(params: StaticExtensionAssetParams = {}) {
