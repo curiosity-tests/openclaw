@@ -82,6 +82,7 @@ function withTarball(
     includeLifecycleMarker?: boolean;
     includeShrinkwrap?: boolean;
     includeWorkspaceTemplates?: boolean;
+    inventoryBody?: string | null;
     packageJson?: Record<string, unknown>;
     postinstall?: boolean;
   } = {},
@@ -121,10 +122,12 @@ function withTarball(
         ...options.packageJson,
       }),
     );
-    writeFileSync(
-      join(packageRoot, "dist", "postinstall-inventory.json"),
-      JSON.stringify(packageInventory),
-    );
+    if (options.inventoryBody !== null) {
+      writeFileSync(
+        join(packageRoot, "dist", "postinstall-inventory.json"),
+        options.inventoryBody ?? JSON.stringify(packageInventory),
+      );
+    }
     const workspaceTemplates =
       options.includeWorkspaceTemplates === false
         ? {}
@@ -470,6 +473,52 @@ describe("check-openclaw-package-tarball", () => {
       files: { [FLAT_PLUGIN_SDK_DECLARATION]: "export {};\n" },
       status: "nonzero",
       stderr: [`inventory references missing tar entry ${DEEP_PLUGIN_SDK_DECLARATION}`],
+    });
+  });
+
+  it("accepts the frozen target's declared Plugin SDK compatibility artifacts", () => {
+    checkTarball({
+      inventory: [
+        "dist/extensionAPI.d.ts",
+        "dist/extensionAPI.js",
+        "dist/plugin-sdk/compat.d.ts",
+        "dist/plugin-sdk/compat.js",
+        "dist/plugin-sdk/index.d.ts",
+        "dist/plugin-sdk/index.js",
+        "dist/plugin-sdk/root-alias.cjs",
+      ],
+      files: {
+        "dist/extensionAPI.d.ts": "export {};\n",
+        "dist/extensionAPI.js": "export {};\n",
+        "dist/plugin-sdk/compat.d.ts": "export {};\n",
+        "dist/plugin-sdk/compat.js": "export {};\n",
+        "dist/plugin-sdk/index.d.ts": "export {};\n",
+        "dist/plugin-sdk/index.js": "export {};\n",
+        "dist/plugin-sdk/root-alias.cjs": "module.exports = {};\n",
+      },
+      version: "2026.6.35",
+      options: { postinstall: true },
+      status: 0,
+      successText: true,
+    });
+  });
+
+  it.each([
+    {
+      name: "missing",
+      inventoryBody: null,
+      stderr: ["missing dist/postinstall-inventory.json"],
+    },
+    {
+      name: "malformed",
+      inventoryBody: "{}\n",
+      stderr: ["invalid dist/postinstall-inventory.json"],
+    },
+  ])("fails closed for a $name postinstall inventory", ({ inventoryBody, stderr }) => {
+    checkTarball({
+      options: { inventoryBody },
+      status: "nonzero",
+      stderr,
     });
   });
 

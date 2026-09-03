@@ -36,7 +36,7 @@ function requirePluginEntries(config: { plugins?: { entries?: Record<string, unk
 }
 
 describe("release-check", () => {
-  it("loads sparse release tooling and checks the separate target SDK and worker inventories", () => {
+  it("loads sparse release tooling and checks the target worker contract", () => {
     const root = mkdtempSync(join(tmpdir(), "openclaw-release-check-target-"));
     try {
       const toolingRoot = join(root, "tooling");
@@ -58,7 +58,6 @@ describe("release-check", () => {
         copyFileSync(relativePath, destination);
       }
       symlinkSync(resolve("node_modules"), join(toolingRoot, "node_modules"), "junction");
-      mkdirSync(join(root, "scripts", "lib"), { recursive: true });
       mkdirSync(join(root, "extensions"));
       const packageJson = JSON.stringify({
         name: "openclaw",
@@ -66,15 +65,7 @@ describe("release-check", () => {
         files: ["dist"],
       });
       writeFileSync(join(root, "package.json"), packageJson);
-      writeFileSync(
-        join(root, "scripts/lib/plugin-sdk-entrypoints.json"),
-        JSON.stringify(["target-private", "target-public"]),
-      );
-      writeFileSync(
-        join(root, "scripts/lib/plugin-sdk-private-local-only-subpaths.json"),
-        JSON.stringify(["target-private"]),
-      );
-      mkdirSync(join(root, "scripts", "fixtures"));
+      mkdirSync(join(root, "scripts", "fixtures"), { recursive: true });
       writeFileSync(
         join(root, "scripts/fixtures/packed-plugin-sdk-type-smoke.ts"),
         "stale target fixture",
@@ -88,9 +79,9 @@ describe("release-check", () => {
           "--input-type=module",
           "--eval",
           `import { readFileSync } from "node:fs";\n` +
-            `const { collectForbiddenPackPaths, collectMissingPackPaths, createPackedPluginSdkTypescriptSmokeProject } = await import(${JSON.stringify(moduleUrl)});\n` +
+            `const { createPackedPluginSdkTypescriptSmokeProject } = await import(${JSON.stringify(moduleUrl)});\n` +
             `createPackedPluginSdkTypescriptSmokeProject({ consumerDir: "consumer", packageSpec: "file:fixture.tgz" });\n` +
-            `console.log(JSON.stringify({ forbidden: collectForbiddenPackPaths(["dist/plugin-sdk/target-private.d.ts", "dist/plugin-sdk/target-public.d.ts"]), required: collectMissingPackPaths([]).filter(path => path.startsWith("dist/plugin-sdk/")), fixture: readFileSync("consumer/src/index.ts", "utf8") }));`,
+            `console.log(JSON.stringify({ fixture: readFileSync("consumer/src/index.ts", "utf8") }));`,
         ],
         {
           cwd: root,
@@ -103,12 +94,6 @@ describe("release-check", () => {
           join(toolingRoot, "scripts/fixtures/packed-plugin-sdk-type-smoke.ts"),
           "utf8",
         ),
-        forbidden: ["dist/plugin-sdk/target-private.d.ts"],
-        required: [
-          "dist/plugin-sdk/target-private.js",
-          "dist/plugin-sdk/target-public.d.ts",
-          "dist/plugin-sdk/target-public.js",
-        ],
       });
 
       copyFileSync("appcast.xml", join(root, "appcast.xml"));
