@@ -161,6 +161,12 @@ describe("check-cli-bootstrap-imports", () => {
     expect(
       collectWorkerDeployArtifactErrors({ rootDir: root, workerDeployEntrypoints: [] }),
     ).toEqual(["Worker deploy artifact emits unstaged runtime asset dist/worker/unexpected.mjs."]);
+
+    rmSync(join(root, "dist/worker"), { recursive: true, force: true });
+    writeFixture(root, "dist/worker", "not a directory\n");
+    expect(
+      collectWorkerDeployArtifactErrors({ rootDir: root, workerDeployEntrypoints: [] }),
+    ).toEqual(["Worker deploy artifact directory dist/worker is unreadable."]);
   });
 
   it("rejects worker package imports and dependency manifests", () => {

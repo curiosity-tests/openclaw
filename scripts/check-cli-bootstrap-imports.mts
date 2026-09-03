@@ -403,8 +403,8 @@ export function collectWorkerDeployArtifactErrors(params: CliBootstrapCheckParam
         );
       }
     }
-  } catch {
-    if (entrypoints.length === 0) {
+  } catch (error) {
+    if (entrypoints.length === 0 && (error as NodeJS.ErrnoException).code === "ENOENT") {
       return [];
     }
     errors.push(
