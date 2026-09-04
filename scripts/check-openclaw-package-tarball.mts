@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
+import { minimatch } from "minimatch";
 import { gte as semverGte, valid as validSemver } from "semver";
 import { coerceErrorMessage } from "./lib/error-format.mts";
 import { LOCAL_BUILD_METADATA_DIST_PATHS } from "./lib/local-build-metadata-paths.mts";
@@ -21,7 +22,7 @@ import {
   PACKAGE_LIFECYCLE_MARKER_CONTRACT_RELATIVE_PATH,
   PACKAGE_LIFECYCLE_PENDING_RELATIVE_PATH,
 } from "./lib/package-lifecycle-marker.mjs";
-import { collectRootPackageExcludedExtensionDirs } from "./lib/root-package-bundled-plugin-excludes.mjs";
+import { isRecord } from "./lib/record-shared.mjs";
 import { WORKSPACE_TEMPLATE_PACK_PATHS } from "./lib/workspace-bootstrap-smoke.mts";
 
 type PackageManifest = Record<string, unknown> & {
@@ -103,6 +104,22 @@ const PACKAGE_DEPENDENCY_SECTIONS = [
   "devDependencies",
 ] as const;
 const REQUIRED_BUNDLED_WORKSPACE_DEPENDENCIES = ["@openclaw/ai"];
+const FORBIDDEN_TARBALL_ENTRY_PREFIXES = [
+  "dist-runtime/",
+  "dist/OpenClaw.app/",
+  "dist/extensions/qa-channel/",
+  "dist/extensions/qa-lab/",
+  "dist/plugin-sdk/extensions/qa-channel/",
+  "dist/plugin-sdk/extensions/qa-lab/",
+  "dist/plugin-sdk/qa-channel.",
+  "dist/plugin-sdk/qa-channel-protocol.",
+  "dist/plugin-sdk/qa-lab.",
+  "dist/plugin-sdk/qa-runtime.",
+  "dist/qa-runtime-",
+  "docs/.generated/",
+  "docs/channels/qa-channel.md",
+  "qa/",
+] as const;
 // Strict Docker artifacts bundle this private runtime rather than resolving it
 // from npm. Keep the concrete load-bearing entries explicit instead of
 // reimplementing Node's conditional package-exports resolver here.
@@ -318,6 +335,105 @@ function collectRequiredBundledWorkspaceDependencyErrors(
   }
 
   return errors;
+}
+
+function normalizePackageRelativePath(value: unknown): string {
+  return (typeof value === "string" ? value : "")
+    .replaceAll("\\", "/")
+    .trim()
+    .replace(/^\.\/+/u, "");
+}
+
+function collectPackagedExtensionStaticAssetErrors(
+  entries: ReadonlySet<string>,
+  readText: (relativePath: string) => string,
+): string[] {
+  const errors: string[] = [];
+  for (const manifestPath of entries) {
+    const match = /^dist\/extensions\/([^/]+)\/package\.json$/u.exec(manifestPath);
+    const extensionId = match?.[1];
+    if (!extensionId) {
+      continue;
+    }
+    let packageJson: unknown;
+    try {
+      packageJson = JSON.parse(readText(manifestPath));
+    } catch {
+      continue;
+    }
+    const openclaw =
+      isRecord(packageJson) && isRecord(packageJson.openclaw) ? packageJson.openclaw : {};
+    const build = isRecord(openclaw.build) ? openclaw.build : {};
+    const staticAssets = Array.isArray(build.staticAssets)
+      ? build.staticAssets.filter(isRecord)
+      : [];
+    for (const asset of staticAssets) {
+      const output = normalizePackageRelativePath(asset.output);
+      if (!output || output.startsWith("../") || output.includes("/../")) {
+        continue;
+      }
+      const assetPath = `dist/extensions/${extensionId}/${output}`;
+      if (!entries.has(assetPath)) {
+        errors.push(
+          `packaged extension ${extensionId} is missing declared static asset ${assetPath}`,
+        );
+      }
+    }
+  }
+  return errors;
+}
+
+function collectPackageFilesExclusionErrors(
+  packageJson: PackageManifest,
+  entries: ReadonlySet<string>,
+): string[] {
+  const exclusions = Array.isArray(packageJson.files)
+    ? packageJson.files.flatMap((entry) =>
+        typeof entry === "string" && entry.startsWith("!") ? [entry.slice(1)] : [],
+      )
+    : [];
+  return [...entries]
+    .filter((entry) => {
+      const segments = entry.split("/");
+      const entryAndAncestors = segments.map((_, index) => segments.slice(0, index + 1).join("/"));
+      return exclusions.some((pattern) =>
+        entryAndAncestors.some((candidate) => minimatch(candidate, pattern, { dot: true })),
+      );
+    })
+    .map((entry) => `root package excludes tar entry ${entry}`);
+}
+
+function collectLocalPackageExportTargets(
+  value: unknown,
+  targets = new Set<string>(),
+): Set<string> {
+  if (typeof value === "string") {
+    if (value.startsWith("./") && !value.includes("*")) {
+      targets.add(value.slice(2));
+    }
+    return targets;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      collectLocalPackageExportTargets(entry, targets);
+    }
+    return targets;
+  }
+  if (isRecord(value)) {
+    for (const entry of Object.values(value)) {
+      collectLocalPackageExportTargets(entry, targets);
+    }
+  }
+  return targets;
+}
+
+function collectPackageExportErrors(
+  packageJson: PackageManifest,
+  entries: ReadonlySet<string>,
+): string[] {
+  return [...collectLocalPackageExportTargets(packageJson.exports)]
+    .filter((target) => !entries.has(target))
+    .map((target) => `package.json export target is missing ${target}`);
 }
 
 const phaseTimingsEnabled = process.env.OPENCLAW_PACKAGE_TARBALL_CHECK_TIMINGS !== "0";
@@ -565,15 +681,15 @@ if (entrySet.has("package.json")) {
   }
 }
 if (packageJson) {
-  const excludedPrefixes = [
-    ...collectRootPackageExcludedExtensionDirs({ cwd: extractedPackageRoot }),
-  ].map((extensionId) => `dist/extensions/${extensionId}/`);
-  for (const entry of normalized) {
-    if (excludedPrefixes.some((prefix) => entry.startsWith(prefix))) {
-      errors.push(`root package excludes tar entry ${entry}`);
-    }
+  errors.push(...collectPackageFilesExclusionErrors(packageJson, entrySet));
+  errors.push(...collectPackageExportErrors(packageJson, entrySet));
+}
+for (const entry of normalized) {
+  if (FORBIDDEN_TARBALL_ENTRY_PREFIXES.some((prefix) => entry.startsWith(prefix))) {
+    errors.push(`forbidden tar entry ${entry}`);
   }
 }
+errors.push(...collectPackagedExtensionStaticAssetErrors(entrySet, readTarEntry));
 const validPackageVersion = validSemver(packageVersion);
 const requiresCodeModeWorker =
   validPackageVersion !== null && semverGte(validPackageVersion, FIRST_CODE_MODE_WORKER_VERSION);

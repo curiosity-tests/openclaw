@@ -70,6 +70,15 @@ function chmodTreeWorldReadable(dir: string) {
   }
 }
 
+function listFilesRecursively(dir: string, prefix = ""): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const relativePath = join(prefix, entry.name);
+    return entry.isDirectory()
+      ? listFilesRecursively(join(dir, entry.name), relativePath)
+      : [relativePath];
+  });
+}
+
 function withTarball(
   inventory: string[],
   files: Record<string, string>,
@@ -79,6 +88,7 @@ function withTarball(
     includeCodeModeWorker?: boolean;
     includeCodeModeWorkerInInventory?: boolean;
     includeControlUi?: boolean;
+    filesOnlyArchive?: boolean;
     includeLifecycleMarker?: boolean;
     includeShrinkwrap?: boolean;
     includeWorkspaceTemplates?: boolean;
@@ -176,7 +186,12 @@ function withTarball(
       root,
       process.platform === "win32" ? "openclaw.tgz" : "openclaw:local.tgz",
     );
-    const pack = spawnSync("tar", ["-czf", `./${basename(tarball)}`, "package"], {
+    const archiveEntries = options.filesOnlyArchive
+      ? listFilesRecursively(packageRoot).map(
+          (relativePath) => `package/${relativePath.replaceAll("\\", "/")}`,
+        )
+      : ["package"];
+    const pack = spawnSync("tar", ["-czf", `./${basename(tarball)}`, ...archiveEntries], {
       cwd: root,
       encoding: "utf8",
     });
@@ -538,18 +553,103 @@ describe("check-openclaw-package-tarball", () => {
     },
   );
 
-  it("rejects extension files the root package explicitly excludes", () => {
+  it.each([
+    ["extension file", "dist/extensions/slack/runtime.js", "!dist/extensions/slack/**"],
+    ["generated docs", "docs/.generated/config-baseline.json", "!docs/.generated/**"],
+    ["build metadata", "dist/plugin-sdk/.tsbuildinfo", "!dist/plugin-sdk/.tsbuildinfo"],
+  ])("rejects a packaged %s excluded by package metadata", (_, relativePath, exclusion) => {
     checkTarball({
-      inventory: ["dist/index.js", "dist/extensions/slack/runtime.js"],
+      inventory: ["dist/index.js", relativePath],
       files: {
         "dist/index.js": "export {};\n",
-        "dist/extensions/slack/runtime.js": "export {};\n",
+        [relativePath]: "fixture\n",
       },
       options: {
-        packageJson: { files: ["dist", "!dist/extensions/slack/**"] },
+        packageJson: { files: ["dist", "docs", exclusion] },
       },
       status: "nonzero",
-      stderr: ["root package excludes tar entry dist/extensions/slack/runtime.js"],
+      stderr: [`root package excludes tar entry ${relativePath}`],
+    });
+  });
+
+  it("rejects descendants of excluded directories in files-only tarballs", () => {
+    const relativePath = "dist/Foo.app/Contents/MacOS/Foo";
+    checkTarball({
+      inventory: ["dist/index.js", relativePath],
+      files: {
+        "dist/index.js": "export {};\n",
+        [relativePath]: "binary\n",
+      },
+      options: {
+        filesOnlyArchive: true,
+        packageJson: { files: ["dist", "!dist/**/*.app"] },
+      },
+      status: "nonzero",
+      stderr: [`root package excludes tar entry ${relativePath}`],
+    });
+  });
+
+  it("rejects private package cargo independently of package metadata", () => {
+    const privatePath = "qa/scenarios/index.yaml";
+    checkTarball({
+      inventory: ["dist/index.js"],
+      files: {
+        "dist/index.js": "export {};\n",
+        [privatePath]: "id: private\n",
+      },
+      status: "nonzero",
+      stderr: [`forbidden tar entry ${privatePath}`],
+    });
+  });
+
+  it("rejects missing static assets declared by packaged extension metadata", () => {
+    const extensionManifest = "dist/extensions/example/package.json";
+    checkTarball({
+      inventory: ["dist/index.js", extensionManifest],
+      files: {
+        "dist/index.js": "export {};\n",
+        [extensionManifest]: JSON.stringify({
+          name: "@openclaw/example",
+          openclaw: {
+            build: {
+              staticAssets: [
+                {
+                  source: "./assets/runtime.js",
+                  output: "assets/runtime.js",
+                },
+              ],
+            },
+          },
+        }),
+      },
+      options: { postinstall: true },
+      status: "nonzero",
+      stderr: [
+        "packaged extension example is missing declared static asset dist/extensions/example/assets/runtime.js",
+      ],
+    });
+  });
+
+  it("rejects local package export targets missing from the tarball", () => {
+    checkTarball({
+      inventory: ["dist/index.js", "dist/plugin-sdk/example.js"],
+      files: {
+        "dist/index.js": "export {};\n",
+        "dist/plugin-sdk/example.js": "export {};\n",
+      },
+      options: {
+        packageJson: {
+          exports: {
+            ".": "./dist/index.js",
+            "./plugin-sdk/example": {
+              types: "./dist/plugin-sdk/example.d.ts",
+              default: "./dist/plugin-sdk/example.js",
+            },
+          },
+        },
+      },
+      status: "nonzero",
+      stderr: ["package.json export target is missing dist/plugin-sdk/example.d.ts"],
     });
   });
 
