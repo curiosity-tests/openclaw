@@ -227,6 +227,27 @@ function discoverStaticExtensionRuntimeOverlayAssets(params: StaticExtensionAsse
   return [...assetsByDest.values()].toSorted((left, right) => left.dest.localeCompare(right.dest));
 }
 
+/** Lists static asset outputs declared by extension metadata inside a packed root. */
+export function listPackagedStaticExtensionAssetOutputs(
+  params: Pick<StaticExtensionAssetParams, "rootDir" | "fs"> = {},
+) {
+  const rootDir = params.rootDir ?? process.cwd();
+  const fsImpl = params.fs ?? fs;
+  return listDistExtensionPackageDirs(rootDir, fsImpl)
+    .flatMap(({ dirName, packageDir }) => {
+      const packageJsonPath = path.join(packageDir, "package.json");
+      if (!fsImpl.existsSync(packageJsonPath)) {
+        return [];
+      }
+      const packageJson = readJsonFile(packageJsonPath, fsImpl);
+      return readPackageStaticAssetEntries(packageJson).flatMap((entry) => {
+        const output = normalizePackageRelativePath(entry.output);
+        return output ? [toPosixPath(path.posix.join("dist", "extensions", dirName, output))] : [];
+      });
+    })
+    .toSorted((left, right) => left.localeCompare(right));
+}
+
 /**
  * Lists source file paths for declared static extension assets.
  */

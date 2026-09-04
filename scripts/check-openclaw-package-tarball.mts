@@ -22,10 +22,13 @@ import {
   PACKAGE_LIFECYCLE_MARKER_CONTRACT_RELATIVE_PATH,
   PACKAGE_LIFECYCLE_PENDING_RELATIVE_PATH,
 } from "./lib/package-lifecycle-marker.mjs";
+import { collectForbiddenPackedPathErrors } from "./lib/packed-cargo-policy.mts";
 import { isRecord } from "./lib/record-shared.mjs";
+import { listPackagedStaticExtensionAssetOutputs } from "./lib/static-extension-assets.mts";
 import { WORKSPACE_TEMPLATE_PACK_PATHS } from "./lib/workspace-bootstrap-smoke.mts";
 
 type PackageManifest = Record<string, unknown> & {
+  files?: unknown;
   scripts?: { postinstall?: unknown };
   version?: unknown;
 };
@@ -104,22 +107,6 @@ const PACKAGE_DEPENDENCY_SECTIONS = [
   "devDependencies",
 ] as const;
 const REQUIRED_BUNDLED_WORKSPACE_DEPENDENCIES = ["@openclaw/ai"];
-const FORBIDDEN_TARBALL_ENTRY_PREFIXES = [
-  "dist-runtime/",
-  "dist/OpenClaw.app/",
-  "dist/extensions/qa-channel/",
-  "dist/extensions/qa-lab/",
-  "dist/plugin-sdk/extensions/qa-channel/",
-  "dist/plugin-sdk/extensions/qa-lab/",
-  "dist/plugin-sdk/qa-channel.",
-  "dist/plugin-sdk/qa-channel-protocol.",
-  "dist/plugin-sdk/qa-lab.",
-  "dist/plugin-sdk/qa-runtime.",
-  "dist/qa-runtime-",
-  "docs/.generated/",
-  "docs/channels/qa-channel.md",
-  "qa/",
-] as const;
 // Strict Docker artifacts bundle this private runtime rather than resolving it
 // from npm. Keep the concrete load-bearing entries explicit instead of
 // reimplementing Node's conditional package-exports resolver here.
@@ -337,52 +324,6 @@ function collectRequiredBundledWorkspaceDependencyErrors(
   return errors;
 }
 
-function normalizePackageRelativePath(value: unknown): string {
-  return (typeof value === "string" ? value : "")
-    .replaceAll("\\", "/")
-    .trim()
-    .replace(/^\.\/+/u, "");
-}
-
-function collectPackagedExtensionStaticAssetErrors(
-  entries: ReadonlySet<string>,
-  readText: (relativePath: string) => string,
-): string[] {
-  const errors: string[] = [];
-  for (const manifestPath of entries) {
-    const match = /^dist\/extensions\/([^/]+)\/package\.json$/u.exec(manifestPath);
-    const extensionId = match?.[1];
-    if (!extensionId) {
-      continue;
-    }
-    let packageJson: unknown;
-    try {
-      packageJson = JSON.parse(readText(manifestPath));
-    } catch {
-      continue;
-    }
-    const openclaw =
-      isRecord(packageJson) && isRecord(packageJson.openclaw) ? packageJson.openclaw : {};
-    const build = isRecord(openclaw.build) ? openclaw.build : {};
-    const staticAssets = Array.isArray(build.staticAssets)
-      ? build.staticAssets.filter(isRecord)
-      : [];
-    for (const asset of staticAssets) {
-      const output = normalizePackageRelativePath(asset.output);
-      if (!output || output.startsWith("../") || output.includes("/../")) {
-        continue;
-      }
-      const assetPath = `dist/extensions/${extensionId}/${output}`;
-      if (!entries.has(assetPath)) {
-        errors.push(
-          `packaged extension ${extensionId} is missing declared static asset ${assetPath}`,
-        );
-      }
-    }
-  }
-  return errors;
-}
-
 function collectPackageFilesExclusionErrors(
   packageJson: PackageManifest,
   entries: ReadonlySet<string>,
@@ -532,13 +473,9 @@ const REQUIRED_TARBALL_ENTRIES = ["dist/control-ui/index.html", ...WORKSPACE_TEM
 const REQUIRED_TARBALL_ENTRY_PREFIXES = ["dist/control-ui/assets/"];
 const LEGACY_PACKAGE_ACCEPTANCE_COMPAT_MAX = { year: 2026, month: 4, day: 25 };
 const LEGACY_LOCAL_BUILD_METADATA_COMPAT_MAX = { year: 2026, month: 4, day: 26 };
-const LEGACY_SHRINKWRAP_OMISSION_COMPAT_MAX = { year: 2026, month: 5, day: 20 };
-// 2026.7.2-beta.4 is the last published artifact known to ship shrinkwrap.
-// The whole 2026.7.2 train is transitional; later trains must be lockless.
-const NPM_SHRINKWRAP_TRANSITION_TRAIN = { year: 2026, month: 7, day: 2 };
 // 2026.8.1 shipped the old dist guard. Historical inspection must still accept it.
 const LEGACY_LIFECYCLE_MARKER_COMPAT_MAX = { year: 2026, month: 8, day: 1 };
-const FORBIDDEN_LOCAL_BUILD_METADATA_FILES = new Set(LOCAL_BUILD_METADATA_DIST_PATHS);
+const FORBIDDEN_LOCAL_BUILD_METADATA_FILES = new Set<string>(LOCAL_BUILD_METADATA_DIST_PATHS);
 
 const LEGACY_OMITTED_PRIVATE_QA_INVENTORY_PREFIXES = [
   "dist/extensions/qa-channel/",
@@ -603,16 +540,6 @@ function isLegacyLocalBuildMetadataCompatVersion(version: string): boolean {
 function isLegacyLifecycleMarkerCompatVersion(version: string): boolean {
   const parsed = parseCalver(version);
   return parsed ? compareCalver(parsed, LEGACY_LIFECYCLE_MARKER_COMPAT_MAX) <= 0 : false;
-}
-
-function isLegacyShrinkwrapOmissionCompatVersion(version: string): boolean {
-  const parsed = parseCalver(version);
-  return parsed ? compareCalver(parsed, LEGACY_SHRINKWRAP_OMISSION_COMPAT_MAX) <= 0 : false;
-}
-
-function compareNpmShrinkwrapTransitionTrain(version: string): number | null {
-  const parsed = parseCalver(version);
-  return parsed ? compareCalver(parsed, NPM_SHRINKWRAP_TRANSITION_TRAIN) : null;
 }
 
 function readTarEntry(entryPath: string): string {
@@ -683,13 +610,26 @@ if (entrySet.has("package.json")) {
 if (packageJson) {
   errors.push(...collectPackageFilesExclusionErrors(packageJson, entrySet));
   errors.push(...collectPackageExportErrors(packageJson, entrySet));
-}
-for (const entry of normalized) {
-  if (FORBIDDEN_TARBALL_ENTRY_PREFIXES.some((prefix) => entry.startsWith(prefix))) {
-    errors.push(`forbidden tar entry ${entry}`);
+  try {
+    for (const assetPath of listPackagedStaticExtensionAssetOutputs({
+      rootDir: extractedPackageRoot,
+    })) {
+      if (!entrySet.has(assetPath)) {
+        errors.push(`declared static extension asset is missing: ${assetPath}`);
+      }
+    }
+  } catch (error) {
+    errors.push(`unreadable packaged extension asset metadata: ${coerceErrorMessage(error)}`);
   }
 }
-errors.push(...collectPackagedExtensionStaticAssetErrors(entrySet, readTarEntry));
+const allowsLegacyLocalBuildMetadata = isLegacyLocalBuildMetadataCompatVersion(packageVersion);
+errors.push(
+  ...collectForbiddenPackedPathErrors(
+    allowsLegacyLocalBuildMetadata
+      ? normalized.filter((entry) => !FORBIDDEN_LOCAL_BUILD_METADATA_FILES.has(entry))
+      : normalized,
+  ),
+);
 const validPackageVersion = validSemver(packageVersion);
 const requiresCodeModeWorker =
   validPackageVersion !== null && semverGte(validPackageVersion, FIRST_CODE_MODE_WORKER_VERSION);
@@ -699,30 +639,16 @@ if (requiresCodeModeWorker && !entrySet.has(CODE_MODE_WORKER_PATH)) {
 if (entrySet.has("package-lock.json")) {
   errors.push("package tarball must not contain package-lock.json");
 }
-const shrinkwrapTransitionComparison = compareNpmShrinkwrapTransitionTrain(packageVersion);
 const hasShrinkwrap = entrySet.has("npm-shrinkwrap.json");
-let shouldValidateShrinkwrap = false;
-if (shrinkwrapTransitionComparison !== null && shrinkwrapTransitionComparison > 0) {
-  if (hasShrinkwrap) {
-    errors.push("package tarball must not contain npm-shrinkwrap.json");
-  }
-} else if (shrinkwrapTransitionComparison === 0) {
-  if (hasShrinkwrap) {
-    warnings.push(
-      "2026.7.2 transition package contains npm-shrinkwrap.json from the published beta train",
-    );
-    shouldValidateShrinkwrap = true;
-  }
-} else if (!hasShrinkwrap) {
-  if (isLegacyShrinkwrapOmissionCompatVersion(packageVersion)) {
-    warnings.push("legacy package omits npm-shrinkwrap.json");
-  } else {
-    errors.push("legacy package is missing required tar entry npm-shrinkwrap.json");
-  }
-} else {
-  shouldValidateShrinkwrap = true;
+const declaresShrinkwrap =
+  Array.isArray(packageJson?.files) && packageJson.files.includes("npm-shrinkwrap.json");
+if (hasShrinkwrap && !declaresShrinkwrap) {
+  errors.push("package tarball must not contain npm-shrinkwrap.json");
 }
-if (shouldValidateShrinkwrap) {
+if (!hasShrinkwrap && declaresShrinkwrap) {
+  errors.push("package.json declares missing tar entry npm-shrinkwrap.json");
+}
+if (hasShrinkwrap && declaresShrinkwrap) {
   try {
     const shrinkwrap = JSON.parse(readTarEntry("npm-shrinkwrap.json")) as ShrinkwrapManifest;
     const rootPackage = shrinkwrap.packages?.[""];
@@ -781,13 +707,11 @@ if (
 ) {
   errors.push(`forbidden legacy tar entry ${LEGACY_PACKAGE_INSTALL_GUARD_RELATIVE_PATH}`);
 }
-for (const forbiddenEntry of FORBIDDEN_LOCAL_BUILD_METADATA_FILES) {
-  if (entrySet.has(forbiddenEntry)) {
-    if (isLegacyLocalBuildMetadataCompatVersion(packageVersion)) {
+if (allowsLegacyLocalBuildMetadata) {
+  for (const forbiddenEntry of FORBIDDEN_LOCAL_BUILD_METADATA_FILES) {
+    if (entrySet.has(forbiddenEntry)) {
       warnings.push(`legacy package includes local build metadata tar entry ${forbiddenEntry}`);
-      continue;
     }
-    errors.push(`forbidden local build metadata tar entry ${forbiddenEntry}`);
   }
 }
 if (!entrySet.has(PACKAGE_DIST_INVENTORY_RELATIVE_PATH)) {

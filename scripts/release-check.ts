@@ -1275,14 +1275,17 @@ async function verifyPackedContents(
 ): Promise<void> {
   // WORKER_BUNDLE_*_PATH exports declare the target's sealed deploy artifacts.
   // Trusted tooling may be newer than the frozen target in the working directory.
-  // Older frozen targets predate this contract and therefore declare no worker artifacts.
+  // The producer owns this contract; shared worker helpers can predate deploy output.
+  const workerProducerPath = resolve("src/worker/worker-deploy-entry.ts");
   const workerBundlePath = resolve("src/shared/worker-bundle-hash.ts");
-  const workerDeployEntrypoints = existsSync(workerBundlePath)
+  const workerDeployEntrypoints = existsSync(workerProducerPath)
     ? Object.entries(await tsImport(pathToFileURL(workerBundlePath).href, import.meta.url))
         .filter(([name]) => /^WORKER_BUNDLE_.*_PATH$/u.test(name))
         .map(([name, value]) => {
-          if (typeof value !== "string") {
-            throw new Error(`release-check: target worker artifact ${name} must be a path string.`);
+          if (typeof value !== "string" || !value.trim()) {
+            throw new Error(
+              `release-check: target worker artifact ${name} must be a non-empty path string.`,
+            );
           }
           return `dist/worker/${value}`;
         })

@@ -49,15 +49,6 @@ const LEGACY_AI_RUNTIME_PACKAGE_JSON = JSON.stringify({
   },
 });
 
-function usesLegacyShrinkwrapByDefault(version: string): boolean {
-  const match = /^(\d{4})\.(\d{1,2})\.(\d{1,2})/u.exec(version);
-  if (!match) {
-    return false;
-  }
-  const [year = 0, month = 0, patch = 0] = match.slice(1).map(Number);
-  return year < 2026 || (year === 2026 && (month < 7 || (month === 7 && patch < 2)));
-}
-
 function chmodTreeWorldReadable(dir: string) {
   chmodSync(dir, 0o755);
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -154,8 +145,11 @@ function withTarball(
             [PACKAGE_LIFECYCLE_PENDING_RELATIVE_PATH]: "pending\n",
             [PACKAGE_LIFECYCLE_MARKER_CONTRACT_RELATIVE_PATH]: "export {};\n",
           };
+    const declaredFiles = Array.isArray(options.packageJson?.files)
+      ? options.packageJson.files
+      : [];
     const shrinkwrapFile =
-      (options.includeShrinkwrap ?? usesLegacyShrinkwrapByDefault(version))
+      (options.includeShrinkwrap ?? declaredFiles.includes("npm-shrinkwrap.json"))
         ? {
             "npm-shrinkwrap.json": `${JSON.stringify({
               name: "openclaw",
@@ -598,7 +592,7 @@ describe("check-openclaw-package-tarball", () => {
         [privatePath]: "id: private\n",
       },
       status: "nonzero",
-      stderr: [`forbidden tar entry ${privatePath}`],
+      stderr: [`npm package must not include private QA suite artifact "${privatePath}".`],
     });
   });
 
@@ -625,8 +619,22 @@ describe("check-openclaw-package-tarball", () => {
       options: { postinstall: true },
       status: "nonzero",
       stderr: [
-        "packaged extension example is missing declared static asset dist/extensions/example/assets/runtime.js",
+        "declared static extension asset is missing: dist/extensions/example/assets/runtime.js",
       ],
+    });
+  });
+
+  it("fails closed for malformed packaged extension metadata", () => {
+    const extensionManifest = "dist/extensions/example/package.json";
+    checkTarball({
+      inventory: ["dist/index.js", extensionManifest],
+      files: {
+        "dist/index.js": "export {};\n",
+        [extensionManifest]: "{\n",
+      },
+      options: { postinstall: true },
+      status: "nonzero",
+      stderr: ["unreadable packaged extension asset metadata:"],
     });
   });
 
@@ -822,39 +830,29 @@ describe("check-openclaw-package-tarball", () => {
       ],
     },
     {
-      name: "rejects npm-shrinkwrap.json after the 2026.7.2 transition train",
+      name: "rejects npm-shrinkwrap.json when package.json does not declare it",
       files: { "dist/index.js": "export {};\n", "npm-shrinkwrap.json": "{}\n" },
       version: "2026.7.3",
       status: "nonzero",
       stderr: ["package tarball must not contain npm-shrinkwrap.json"],
+    },
+    {
+      name: "rejects a package that declares but omits npm-shrinkwrap.json",
+      version: "2026.7.33",
+      options: {
+        includeShrinkwrap: false,
+        packageJson: { files: ["dist", "npm-shrinkwrap.json"] },
+      },
+      status: "nonzero",
+      stderr: ["package.json declares missing tar entry npm-shrinkwrap.json"],
     },
   ];
   for (const testCase of packageContractCases) {
     it(testCase.name, () => checkTarball(testCase));
   }
 
-  it.each(["2026.7.2-beta.4", "2026.7.2"])(
-    "tolerates a valid shrinkwrap in the %s transition train",
-    (version) => {
-      checkTarball({
-        files: {
-          "dist/index.js": "export {};\n",
-          "npm-shrinkwrap.json": `${JSON.stringify({
-            name: "openclaw",
-            version,
-            lockfileVersion: 3,
-            packages: { "": { name: "openclaw", version } },
-          })}\n`,
-        },
-        version,
-        status: 0,
-        stderr: ["2026.7.2 transition package contains npm-shrinkwrap.json"],
-      });
-    },
-  );
-
-  it("accepts a valid shrinkwrap in an already-published package", () => {
-    const version = "2026.6.11";
+  it("accepts and validates a shrinkwrap declared by the target package", () => {
+    const version = "2026.7.33";
     checkTarball({
       files: {
         "dist/index.js": "export {};\n",
@@ -866,6 +864,7 @@ describe("check-openclaw-package-tarball", () => {
         })}\n`,
       },
       version,
+      options: { packageJson: { files: ["dist", "npm-shrinkwrap.json"] } },
       status: 0,
     });
   });
@@ -1041,8 +1040,8 @@ describe("check-openclaw-package-tarball", () => {
       version: "2026.4.27",
       status: "nonzero",
       stderr: [
-        "forbidden local build metadata tar entry dist/.buildstamp",
-        "forbidden local build metadata tar entry dist/.runtime-postbuildstamp",
+        'npm package must not include local build metadata "dist/.buildstamp".',
+        'npm package must not include local build metadata "dist/.runtime-postbuildstamp".',
       ],
     },
     {

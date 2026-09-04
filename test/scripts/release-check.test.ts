@@ -98,6 +98,8 @@ describe("release-check", () => {
 
       copyFileSync("appcast.xml", join(root, "appcast.xml"));
       mkdirSync(join(root, "src/shared"), { recursive: true });
+      mkdirSync(join(root, "src/worker"), { recursive: true });
+      writeFileSync(join(root, "src/worker/worker-deploy-entry.ts"), "export {};\n");
       const packedRoot = join(root, "package");
       const packedFiles = {
         "package.json": packageJson,
@@ -147,9 +149,33 @@ describe("release-check", () => {
         );
       }
 
-      // The historical frozen target predates the worker-bundle contract entirely.
-      // It must continue through the release checks instead of loading trusted tooling's contract.
-      rmSync(join(root, "src/shared/worker-bundle-hash.ts"));
+      writeFileSync(
+        join(root, "src/shared/worker-bundle-hash.ts"),
+        'export const WORKER_BUNDLE_ENTRY_PATH = "";\n',
+      );
+      const emptyPathResult = spawnSync(
+        process.execPath,
+        [
+          "--import",
+          join(toolingRoot, "scripts/tsx.mjs"),
+          join(toolingRoot, "scripts/release-check.ts"),
+          "--tarball",
+          tarball,
+        ],
+        {
+          cwd: root,
+          encoding: "utf8",
+          env: { ...process.env, TSX_TSCONFIG_PATH: join(toolingRoot, "tsconfig.json") },
+        },
+      );
+      expect(emptyPathResult.status).toBe(1);
+      expect(emptyPathResult.stderr).toContain(
+        "release-check: target worker artifact WORKER_BUNDLE_ENTRY_PATH must be a non-empty path string.",
+      );
+
+      // Shared worker helpers predate the deploy producer and cannot define the
+      // package contract for those historical frozen targets.
+      rmSync(join(root, "src/worker/worker-deploy-entry.ts"));
       rmSync(join(packedRoot, "dist/worker"), { recursive: true, force: true });
       const noWorkerTarball = join(root, "target-without-workers.tgz");
       create({ cwd: root, file: noWorkerTarball, gzip: true, sync: true }, ["package"]);
