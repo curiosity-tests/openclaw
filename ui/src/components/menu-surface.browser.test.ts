@@ -25,7 +25,7 @@ afterEach(() => {
 // desktop grid. Dynamic import keeps jsdom collection from touching the
 // browser-only context module.
 async function useDesktopViewport() {
-  const { page } = await import("@vitest/browser/context");
+  const { page } = await import("vitest/browser");
   await page.viewport(1280, 800);
 }
 
@@ -125,8 +125,11 @@ describe.skipIf(!hasPopoverApi)("sidebar menu stacking", () => {
 
     const menu = dropdown.shadowRoot?.querySelector<HTMLElement>('[part="menu"]');
     expect(menu).not.toBeNull();
+    // Web Awesome signals reposition before its async position write completes.
+    await expect
+      .poll(() => menu!.getBoundingClientRect().right)
+      .toBeGreaterThan(dividerBounds.left);
     const menuBounds = menu!.getBoundingClientRect();
-    expect(menuBounds.right).toBeGreaterThan(dividerBounds.left);
     const hit = document.elementFromPoint(
       dividerBounds.left + dividerBounds.width / 2,
       menuBounds.top + menuBounds.height / 2,

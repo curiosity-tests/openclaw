@@ -5,73 +5,65 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "./helpers/temp-dir.js";
-import { loadVitestExperimentalConfig } from "./vitest/vitest.performance-config.ts";
+import { loadVitestPerformanceConfig } from "./vitest/vitest.performance-config.ts";
 
-describe("loadVitestExperimentalConfig", () => {
+describe("loadVitestPerformanceConfig", () => {
   it("enables the filesystem module cache by default", () => {
-    expect(loadVitestExperimentalConfig({}, "linux")).toEqual({
-      experimental: {
-        fsModuleCache: true,
-        fsModuleCachePath: path.join(process.cwd(), ".cache", "vitest", "default"),
-      },
+    expect(loadVitestPerformanceConfig({}, "linux")).toEqual({
+      fsModuleCache: true,
+      fsModuleCachePath: path.join(process.cwd(), ".cache", "vitest", "default"),
     });
   });
 
   it("enables the filesystem module cache explicitly", () => {
     expect(
-      loadVitestExperimentalConfig(
+      loadVitestPerformanceConfig(
         {
           OPENCLAW_VITEST_FS_MODULE_CACHE: "1",
         },
         "linux",
       ),
     ).toEqual({
-      experimental: {
-        fsModuleCache: true,
-        fsModuleCachePath: path.join(process.cwd(), ".cache", "vitest", "default"),
-      },
+      fsModuleCache: true,
+      fsModuleCachePath: path.join(process.cwd(), ".cache", "vitest", "default"),
     });
   });
 
   it("passes through the filesystem module cache path when provided", () => {
     expect(
-      loadVitestExperimentalConfig(
+      loadVitestPerformanceConfig(
         {
           OPENCLAW_VITEST_FS_MODULE_CACHE_PATH: "/tmp/openclaw-vitest-cache",
         },
         "linux",
       ),
     ).toEqual({
-      experimental: {
-        fsModuleCache: true,
-        fsModuleCachePath: "/tmp/openclaw-vitest-cache",
-      },
+      fsModuleCache: true,
+      fsModuleCachePath: "/tmp/openclaw-vitest-cache",
     });
   });
 
   it("disables the filesystem module cache by default on Windows", () => {
-    expect(loadVitestExperimentalConfig({}, "win32")).toStrictEqual({});
+    expect(loadVitestPerformanceConfig({}, "win32")).toStrictEqual({});
   });
 
   it("still allows enabling the filesystem module cache explicitly on Windows", () => {
     expect(
-      loadVitestExperimentalConfig(
+      loadVitestPerformanceConfig(
         {
           OPENCLAW_VITEST_FS_MODULE_CACHE: "1",
         },
         "win32",
       ),
     ).toEqual({
-      experimental: {
-        fsModuleCache: true,
-        fsModuleCachePath: path.join(process.cwd(), ".cache", "vitest", "default"),
-      },
+      fsModuleCache: true,
+      fsModuleCachePath: path.join(process.cwd(), ".cache", "vitest", "default"),
     });
   });
 
   it("allows disabling the filesystem module cache explicitly", () => {
     expect(
-      loadVitestExperimentalConfig(
+      loadVitestPerformanceConfig(
         {
           OPENCLAW_VITEST_FS_MODULE_CACHE: "0",
         },
@@ -82,7 +74,7 @@ describe("loadVitestExperimentalConfig", () => {
 
   it("enables import timing output and import breakdown reporting", () => {
     expect(
-      loadVitestExperimentalConfig(
+      loadVitestPerformanceConfig(
         {
           OPENCLAW_VITEST_IMPORT_DURATIONS: "true",
           OPENCLAW_VITEST_PRINT_IMPORT_BREAKDOWN: "1",
@@ -90,9 +82,9 @@ describe("loadVitestExperimentalConfig", () => {
         "linux",
       ),
     ).toEqual({
+      fsModuleCache: true,
+      fsModuleCachePath: path.join(process.cwd(), ".cache", "vitest", "default"),
       experimental: {
-        fsModuleCache: true,
-        fsModuleCachePath: path.join(process.cwd(), ".cache", "vitest", "default"),
         importDurations: { print: true },
         printImportBreakdown: true,
       },
@@ -100,7 +92,7 @@ describe("loadVitestExperimentalConfig", () => {
   });
 
   it("uses RUNNER_OS to detect Windows even when the platform is not win32", () => {
-    expect(loadVitestExperimentalConfig({ RUNNER_OS: "Windows" }, "linux")).toStrictEqual({});
+    expect(loadVitestPerformanceConfig({ RUNNER_OS: "Windows" }, "linux")).toStrictEqual({});
   });
 });
 
@@ -159,7 +151,7 @@ describe("filesystem module cache ownership", () => {
         path.join(checkout, "fixture.test.js"),
         'test("runs the fixture", () => expect(2 + 2).toBe(4));\n',
       );
-      const cacheConfig = loadVitestExperimentalConfig({}, "linux", checkout);
+      const cacheConfig = loadVitestPerformanceConfig({}, "linux", checkout);
       const config = {
         root: checkout,
         test: {
@@ -178,9 +170,7 @@ describe("filesystem module cache ownership", () => {
     const first = prepareCheckout("first");
     const second = prepareCheckout("second");
     run(root, first.checkout);
-    const firstCache =
-      first.cacheConfig.experimental?.fsModuleCachePath ??
-      path.join(sharedModules, ".experimental-vitest-cache");
+    const firstCache = first.cacheConfig.fsModuleCachePath!;
     const sentinel = path.join(firstCache, "first-checkout-sentinel");
     fs.writeFileSync(sentinel, "owned by first checkout");
     fs.writeFileSync(lockfile, "lockfileVersion: 2\n");
@@ -247,7 +237,8 @@ const subjectFile = "subject.js";
 export default {
   root,
   test: {
-    experimental: aggregate.test.experimental,
+    fsModuleCache: aggregate.test.fsModuleCache,
+    fsModuleCachePath: aggregate.test.fsModuleCachePath,
     projects: ["A", "B"].map((name) => ({
       extends: false,
       root: path.join(root, name),
@@ -269,17 +260,18 @@ export default {
         name,
         globals: true,
         include: ["fixture.test.js"],
-        experimental: scoped.test.experimental,
+        fsModuleCache: scoped.test.fsModuleCache,
+        fsModuleCachePath: scoped.test.fsModuleCachePath,
       },
     })),
   },
 };
 `,
     );
-    const cacheConfig = loadVitestExperimentalConfig({}, "linux", root);
+    const cacheConfig = loadVitestPerformanceConfig({}, "linux", root);
     const env = {
       OPENCLAW_VITEST_FS_MODULE_CACHE: "1",
-      OPENCLAW_VITEST_FS_MODULE_CACHE_PATH: cacheConfig.experimental?.fsModuleCachePath,
+      OPENCLAW_VITEST_FS_MODULE_CACHE_PATH: cacheConfig.fsModuleCachePath,
     };
     const check = (projects: string[], expected: [number, number], args: string[] = []) => {
       run(root, root, [...projects.flatMap((name) => ["--project", name]), ...args], env);
