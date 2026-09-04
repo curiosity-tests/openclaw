@@ -39,6 +39,9 @@ Docs: https://docs.openclaw.ai
 
 ### Fixes
 
+- **Release package validation:** compare package tarballs against npm's authoritative dry-run inventory, rejecting npm-excluded cargo while accepting required files and bundled dependency closure.
+- **Update readiness:** select declared health-check owners before loading plugin APIs, preventing unrelated optional Doctor checks from interrupting upgrades while retaining mandatory readiness failures.
+
 - **Ingress and token safety:** bound concurrent pre-auth reads on SMS webhooks, stop delivering commands to a Watch node after its device is revoked, require the per-process nonce on the Copilot Azure BYOK proxy, isolate webhook rate limits by client, let authorized scoped node tokens be managed by their owner, and reject oversized A2A JSON-RPC batches and responses. (#136504, #135904, #134781, #134622, #135617, #134603) Thanks @drobison00 and @eleqtrizit.
 - **Secrets stay redacted:** `config.get` no longer returns unredacted pre-migration snapshots, blank sensitive fields stay editable without being treated as secrets, systemd unit backups no longer leak Gateway tokens, and iOS omits deep-link URLs from logs. Related #135649, #131781. (#134940, #135798, #131786, #134738) Thanks @SunnyShu0925, @markhaines, @vyctorbrzezowski, and @eleqtrizit.
 - **Browser and filesystem boundaries:** Chrome MCP `--browserUrl` endpoints obey the CDP reachability policy, unreviewed Chrome MCP upgrades are blocked, unsupported fill field keys are rejected, sanitized temp file names reject dot segments, and memory sync skips symlinked or non-regular workspace files instead of aborting. Related #135845, #131231, #134967. (#135857, #136121, #131400, #135803, #135042) Thanks @LiuwqGit, @obviyus, @srb11e, @teddytennant, @ruel225, and @kiranvk-2011.

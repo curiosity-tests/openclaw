@@ -73,7 +73,7 @@ function listFilesRecursively(dir: string, prefix = ""): string[] {
 function withTarball(
   inventory: string[],
   files: Record<string, string>,
-  testBody: (tarball: string) => void,
+  testBody: (tarball: string, root: string, packageRoot: string) => void,
   version = "2026.7.2",
   options: {
     includeCodeModeWorker?: boolean;
@@ -85,6 +85,7 @@ function withTarball(
     includeWorkspaceTemplates?: boolean;
     inventoryBody?: string | null;
     packageJson?: Record<string, unknown>;
+    pnpmPack?: boolean;
     postinstall?: boolean;
   } = {},
 ) {
@@ -189,21 +190,40 @@ function withTarball(
     // against restrictive host umasks the way the packer normalizes artifacts.
     chmodTreeWorldReadable(packageRoot);
 
-    const tarball = join(
-      root,
-      process.platform === "win32" ? "openclaw.tgz" : "openclaw:local.tgz",
-    );
-    const archiveEntries = options.filesOnlyArchive
-      ? listFilesRecursively(packageRoot).map(
-          (relativePath) => `package/${relativePath.replaceAll("\\", "/")}`,
+    const tarball = options.pnpmPack
+      ? join(root, `openclaw-${version}.tgz`)
+      : join(root, process.platform === "win32" ? "openclaw.tgz" : "openclaw:local.tgz");
+    const pack = options.pnpmPack
+      ? spawnSync(
+          "pnpm",
+          [
+            "--dir",
+            packageRoot,
+            "pack",
+            "--config.ignore-scripts=true",
+            "--pack-destination",
+            root,
+          ],
+          { encoding: "utf8" },
         )
-      : ["package"];
-    const pack = spawnSync("tar", ["-czf", `./${basename(tarball)}`, ...archiveEntries], {
-      cwd: root,
-      encoding: "utf8",
-    });
+      : spawnSync(
+          "tar",
+          [
+            "-czf",
+            `./${basename(tarball)}`,
+            ...(options.filesOnlyArchive
+              ? listFilesRecursively(packageRoot).map(
+                  (relativePath) => `package/${relativePath.replaceAll("\\", "/")}`,
+                )
+              : ["package"]),
+          ],
+          {
+            cwd: root,
+            encoding: "utf8",
+          },
+        );
     expect(pack.status, pack.stderr).toBe(0);
-    testBody(tarball);
+    testBody(tarball, root, packageRoot);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -290,7 +310,7 @@ describe("check-openclaw-package-tarball", () => {
     expect(extra.stderr).not.toContain("OpenClaw package tarball does not exist");
   });
 
-  it.skipIf(process.platform === "win32").each(["missing", "relative", "empty"])(
+  it.skipIf(process.platform === "win32").each(["relative", "empty"])(
     "validates packages without executing archive-neighbor gzip (%s PATH)",
     (pathKind) => {
       withTarball(["dist/index.js"], { "dist/index.js": "export {};\n" }, (tarball) => {
@@ -304,10 +324,7 @@ describe("check-openclaw-package-tarball", () => {
         const result = spawnSync(process.execPath, [resolve(CHECK_SCRIPT), tarball], {
           cwd: callerDir,
           encoding: "utf8",
-          env:
-            pathKind === "missing"
-              ? {}
-              : { ...process.env, PATH: `${pathEntry}${delimiter}${process.env.PATH ?? ""}` },
+          env: { ...process.env, PATH: `${pathEntry}${delimiter}${process.env.PATH ?? ""}` },
         });
         expect.soft(existsSync(`${archiveGzip}.executed`)).toBe(false);
         expect(result.status, result.stderr).toBe(0);
@@ -378,6 +395,77 @@ describe("check-openclaw-package-tarball", () => {
         expect(result.stdout).toContain("OpenClaw package tarball integrity passed.");
       },
     );
+  });
+
+  it("accepts a real pnpm-produced package with the same npm inventory", () => {
+    withTarball(
+      ["dist/index.js"],
+      { "dist/index.js": "export {};\n" },
+      (tarball) => {
+        const result = spawnSync(process.execPath, [resolve(CHECK_SCRIPT), tarball], {
+          encoding: "utf8",
+        });
+
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stdout).toContain("OpenClaw package tarball integrity passed.");
+        expect(result.stderr).toMatch(/npm pack inventory \(npm \d+\.\d+\.\d+/u);
+      },
+      "2026.9.4",
+      { pnpmPack: true },
+    );
+  });
+
+  it("never executes package lifecycle scripts while collecting npm inventory", () => {
+    withTarball(
+      ["dist/index.js"],
+      { "dist/index.js": "export {};\n" },
+      (tarball, root) => {
+        const marker = join(root, "lifecycle-script-ran");
+        const result = spawnSync(process.execPath, [resolve(CHECK_SCRIPT), tarball], {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            OPENCLAW_TEST_LIFECYCLE_MARKER: marker,
+          },
+        });
+
+        expect(result.status, result.stderr).toBe(0);
+        expect(existsSync(marker)).toBe(false);
+      },
+      "2026.9.4",
+      {
+        packageJson: {
+          scripts: {
+            prepack:
+              "node -e \"require('node:fs').writeFileSync(process.env.OPENCLAW_TEST_LIFECYCLE_MARKER, 'ran')\"",
+            prepare:
+              "node -e \"require('node:fs').writeFileSync(process.env.OPENCLAW_TEST_LIFECYCLE_MARKER, 'ran')\"",
+          },
+        },
+      },
+    );
+  });
+
+  it.skipIf(process.platform === "win32")("rejects duplicate tar file paths", () => {
+    withTarball(["dist/index.js"], { "dist/index.js": "export {};\n" }, (_, root) => {
+      const tarball = join(root, "duplicate-path.tgz");
+      const pack = spawnSync(
+        "tar",
+        ["-czf", `./${basename(tarball)}`, "package", "package/dist/index.js"],
+        {
+          cwd: root,
+          encoding: "utf8",
+        },
+      );
+      expect(pack.status, pack.stderr).toBe(0);
+
+      const result = spawnSync(process.execPath, [resolve(CHECK_SCRIPT), tarball], {
+        encoding: "utf8",
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("package tarball contains duplicate paths: dist/index.js");
+    });
   });
 
   it.runIf(process.platform !== "win32")(
@@ -560,12 +648,8 @@ describe("check-openclaw-package-tarball", () => {
     },
   );
 
-  it.each([
-    ["extension file", "dist/extensions/slack/runtime.js", "!dist/extensions/slack/**"],
-    ["generated docs", "docs/.generated/config-baseline.json", "!docs/.generated/**"],
-    ["build metadata", "dist/plugin-sdk/.tsbuildinfo", "!dist/plugin-sdk/.tsbuildinfo"],
-    ["root-anchored file", "dist/private/key", "!/dist/private/**"],
-  ])("rejects a packaged %s excluded by package metadata", (_, relativePath, exclusion) => {
+  it("rejects a tar entry excluded by npm package metadata", () => {
+    const relativePath = "dist/extensions/slack/runtime.js";
     checkTarball({
       inventory: ["dist/index.js", relativePath],
       files: {
@@ -573,33 +657,14 @@ describe("check-openclaw-package-tarball", () => {
         [relativePath]: "fixture\n",
       },
       options: {
-        packageJson: { files: ["dist", "docs", exclusion] },
+        packageJson: { files: ["dist", "!dist/extensions/slack/**"] },
       },
       status: "nonzero",
-      stderr: [`root package excludes tar entry ${relativePath}`],
+      stderr: [`package tarball contains npm-excluded entries: ${relativePath}`],
     });
   });
 
-  it("rejects tar entries omitted from the package files list", () => {
-    const relativePath = "src/internal.ts";
-    checkTarball({
-      inventory: ["dist/index.js"],
-      files: {
-        "dist/index.js": "export {};\n",
-        [relativePath]: "export {};\n",
-      },
-      options: {
-        packageJson: { files: ["dist"] },
-      },
-      status: "nonzero",
-      stderr: [`root package excludes tar entry ${relativePath}`],
-    });
-  });
-
-  it.each([
-    ["after", ["dist", "!dist/private/**", "dist/private/public.js"]],
-    ["before", ["dist/private/public.js", "dist", "!dist/private/**"]],
-  ])("accepts exact files that package metadata re-includes %s exclusions", (_, filesList) => {
+  it("accepts entries that npm package metadata re-includes", () => {
     const relativePath = "dist/private/public.js";
     checkTarball({
       inventory: ["dist/index.js", relativePath],
@@ -608,43 +673,10 @@ describe("check-openclaw-package-tarball", () => {
         [relativePath]: "export {};\n",
       },
       options: {
-        packageJson: { files: filesList },
+        packageJson: { files: ["dist", "!dist/private/**", "dist/private/public.js"] },
       },
       status: 0,
       successText: true,
-    });
-  });
-
-  it("matches package metadata exclusions case-insensitively like npm", () => {
-    const relativePath = "dist/Private/key";
-    checkTarball({
-      inventory: ["dist/index.js", relativePath],
-      files: {
-        "dist/index.js": "export {};\n",
-        [relativePath]: "secret\n",
-      },
-      options: {
-        packageJson: { files: ["dist", "!dist/private/**"] },
-      },
-      status: "nonzero",
-      stderr: [`root package excludes tar entry ${relativePath}`],
-    });
-  });
-
-  it("rejects descendants of excluded directories in files-only tarballs", () => {
-    const relativePath = "dist/Foo.app/Contents/MacOS/Foo";
-    checkTarball({
-      inventory: ["dist/index.js", relativePath],
-      files: {
-        "dist/index.js": "export {};\n",
-        [relativePath]: "binary\n",
-      },
-      options: {
-        filesOnlyArchive: true,
-        packageJson: { files: ["dist", "!dist/**/*.app"] },
-      },
-      status: "nonzero",
-      stderr: [`root package excludes tar entry ${relativePath}`],
     });
   });
 
@@ -662,81 +694,19 @@ describe("check-openclaw-package-tarball", () => {
     });
   });
 
-  it("rejects excluded descendants of required-file-like root directories", () => {
-    const relativePath = "README.assets/private.txt";
+  it("rejects an npm-forced excluded entry injected into the tarball", () => {
+    const packagePath = ".npmrc";
     checkTarball({
       files: {
         "dist/index.js": "export {};\n",
-        [relativePath]: "private\n",
+        [packagePath]: "registry=https://example.invalid\n",
       },
       options: {
-        packageJson: { files: ["dist", "!README.assets/**"] },
+        filesOnlyArchive: true,
+        packageJson: { files: ["dist", packagePath] },
       },
       status: "nonzero",
-      stderr: [`root package excludes tar entry ${relativePath}`],
-    });
-  });
-
-  it.each([".npmrc", "config/.npmrc", ".git/config", "yarn.lock", "pnpm-lock.yaml", "bun.lockb"])(
-    "rejects npm-forced excluded tar entry %s",
-    (relativePath) => {
-      checkTarball({
-        files: {
-          "dist/index.js": "export {};\n",
-          [relativePath]: "fixture\n",
-        },
-        options: {
-          filesOnlyArchive: true,
-          packageJson: { files: ["dist", relativePath] },
-        },
-        status: "nonzero",
-        stderr: [`npm pack forcibly excludes tar entry ${relativePath}`],
-      });
-    },
-  );
-
-  it.each(["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb"])(
-    "rejects npm-forced excluded bundled package entry %s",
-    (relativePath) => {
-      const packagePath = `node_modules/example/${relativePath}`;
-      checkTarball({
-        files: {
-          "dist/index.js": "export {};\n",
-          "node_modules/example/package.json": '{"name":"example","version":"1.0.0"}\n',
-          [packagePath]: "fixture\n",
-        },
-        options: {
-          packageJson: {
-            files: ["dist"],
-            dependencies: { example: "1.0.0" },
-            bundleDependencies: ["example"],
-          },
-        },
-        status: "nonzero",
-        stderr: [`npm pack forcibly excludes tar entry ${packagePath}`],
-      });
-    },
-  );
-
-  it("rejects npm-forced lockfiles at hoisted transitive package roots", () => {
-    const packagePath = "node_modules/transitive/package-lock.json";
-    checkTarball({
-      files: {
-        "dist/index.js": "export {};\n",
-        "node_modules/example/package.json":
-          '{"name":"example","version":"1.0.0","dependencies":{"transitive":"1.0.0"}}\n',
-        "node_modules/transitive/package.json": '{"name":"transitive","version":"1.0.0"}\n',
-        [packagePath]: "{}\n",
-      },
-      options: {
-        packageJson: {
-          files: ["dist"],
-          dependencies: { example: "1.0.0" },
-          bundleDependencies: ["example"],
-        },
-      },
-      status: "nonzero",
-      stderr: [`npm pack forcibly excludes tar entry ${packagePath}`],
+      stderr: [`package tarball contains npm-excluded entries: ${packagePath}`],
     });
   });
 
@@ -1025,7 +995,7 @@ describe("check-openclaw-package-tarball", () => {
       files: { "dist/index.js": "export {};\n", "package-lock.json": "{}\n" },
       version: "2026.4.27",
       status: "nonzero",
-      stderr: ["package tarball must not contain package-lock.json"],
+      stderr: ["package tarball contains npm-excluded entries: package-lock.json"],
     },
     {
       name: "rejects workspace protocol dependencies in package manifests",
@@ -1035,23 +1005,6 @@ describe("check-openclaw-package-tarball", () => {
       stderr: [
         "package.json dependencies.@openclaw/ai must not use workspace protocol workspace:*",
       ],
-    },
-    {
-      name: "rejects npm-shrinkwrap.json when package.json does not declare it",
-      files: { "dist/index.js": "export {};\n", "npm-shrinkwrap.json": "{}\n" },
-      version: "2026.7.3",
-      status: "nonzero",
-      stderr: ["package tarball must not contain npm-shrinkwrap.json"],
-    },
-    {
-      name: "rejects a package that declares but omits npm-shrinkwrap.json",
-      version: "2026.7.33",
-      options: {
-        includeShrinkwrap: false,
-        packageJson: { files: ["dist", "npm-shrinkwrap.json"] },
-      },
-      status: "nonzero",
-      stderr: ["package.json declares missing tar entry npm-shrinkwrap.json"],
     },
   ];
   for (const testCase of packageContractCases) {
@@ -1076,40 +1029,9 @@ describe("check-openclaw-package-tarball", () => {
     });
   });
 
-  it.each(["./npm-shrinkwrap.json", "NPM-SHRINKWRAP.JSON"])(
-    "accepts normalized shrinkwrap declaration %s",
-    (filesEntry) => {
-      checkTarball({
-        version: "2026.7.33",
-        options: {
-          includeShrinkwrap: true,
-          packageJson: { files: ["dist", filesEntry] },
-        },
-        status: 0,
-        successText: true,
-      });
-    },
-  );
-
   const bundledRuntimeCases: NamedTarballCheck[] = [
     {
-      name: "accepts npm-packlist-owned bundled dependency paths outside root files rules",
-      files: {
-        "dist/index.js": "export {};\n",
-        "node_modules/example/package.json": '{"name":"example","version":"1.0.0"}\n',
-      },
-      options: {
-        packageJson: {
-          files: ["dist"],
-          dependencies: { example: "1.0.0" },
-          bundleDependencies: ["example"],
-        },
-      },
-      status: 0,
-      successText: true,
-    },
-    {
-      name: "accepts npm-packlist-owned hoisted transitive dependency paths",
+      name: "accepts npm-selected bundled and hoisted transitive dependency paths",
       files: {
         "dist/index.js": "export {};\n",
         "node_modules/example/package.json":
@@ -1127,22 +1049,7 @@ describe("check-openclaw-package-tarball", () => {
       successText: true,
     },
     {
-      name: "rejects undeclared node_modules paths outside root files rules",
-      files: {
-        "dist/index.js": "export {};\n",
-        "node_modules/example/package.json": '{"name":"example","version":"1.0.0"}\n',
-      },
-      options: {
-        packageJson: {
-          files: ["dist"],
-          dependencies: { example: "1.0.0" },
-        },
-      },
-      status: "nonzero",
-      stderr: ["root package excludes tar entry node_modules/example/package.json"],
-    },
-    {
-      name: "rejects undeclared packages nested inside a bundled dependency",
+      name: "rejects an undeclared package nested inside a bundled dependency",
       files: {
         "dist/index.js": "export {};\n",
         "node_modules/example/package.json": '{"name":"example","version":"1.0.0"}\n',
@@ -1158,24 +1065,8 @@ describe("check-openclaw-package-tarball", () => {
       },
       status: "nonzero",
       stderr: [
-        "root package excludes tar entry node_modules/example/node_modules/extra/package.json",
+        "package tarball contains npm-excluded entries: node_modules/example/node_modules/extra/package.json",
       ],
-    },
-    {
-      name: "rejects optional-only roots under boolean bundleDependencies",
-      files: {
-        "dist/index.js": "export {};\n",
-        "node_modules/optional/package.json": '{"name":"optional","version":"1.0.0"}\n',
-      },
-      options: {
-        packageJson: {
-          files: ["dist"],
-          optionalDependencies: { optional: "1.0.0" },
-          bundleDependencies: true,
-        },
-      },
-      status: "nonzero",
-      stderr: ["root package excludes tar entry node_modules/optional/package.json"],
     },
     {
       name: "accepts separately published private workspace dependencies by default",
