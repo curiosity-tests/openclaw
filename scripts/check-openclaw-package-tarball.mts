@@ -21,6 +21,7 @@ import {
   PACKAGE_LIFECYCLE_MARKER_CONTRACT_RELATIVE_PATH,
   PACKAGE_LIFECYCLE_PENDING_RELATIVE_PATH,
 } from "./lib/package-lifecycle-marker.mjs";
+import { collectRootPackageExcludedExtensionDirs } from "./lib/root-package-bundled-plugin-excludes.mjs";
 import { WORKSPACE_TEMPLATE_PACK_PATHS } from "./lib/workspace-bootstrap-smoke.mts";
 
 type PackageManifest = Record<string, unknown> & {
@@ -561,6 +562,16 @@ if (entrySet.has("package.json")) {
     }
   } catch {
     packageVersion = "";
+  }
+}
+if (packageJson) {
+  const excludedPrefixes = [
+    ...collectRootPackageExcludedExtensionDirs({ cwd: extractedPackageRoot }),
+  ].map((extensionId) => `dist/extensions/${extensionId}/`);
+  for (const entry of normalized) {
+    if (excludedPrefixes.some((prefix) => entry.startsWith(prefix))) {
+      errors.push(`root package excludes tar entry ${entry}`);
+    }
   }
 }
 const validPackageVersion = validSemver(packageVersion);

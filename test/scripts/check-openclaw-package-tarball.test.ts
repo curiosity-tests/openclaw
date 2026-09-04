@@ -538,6 +538,21 @@ describe("check-openclaw-package-tarball", () => {
     },
   );
 
+  it("rejects extension files the root package explicitly excludes", () => {
+    checkTarball({
+      inventory: ["dist/index.js", "dist/extensions/slack/runtime.js"],
+      files: {
+        "dist/index.js": "export {};\n",
+        "dist/extensions/slack/runtime.js": "export {};\n",
+      },
+      options: {
+        packageJson: { files: ["dist", "!dist/extensions/slack/**"] },
+      },
+      status: "nonzero",
+      stderr: ["root package excludes tar entry dist/extensions/slack/runtime.js"],
+    });
+  });
+
   const packageContractCases: NamedTarballCheck[] = [
     {
       name: "accepts historical packages published before the Code Mode worker existed",
