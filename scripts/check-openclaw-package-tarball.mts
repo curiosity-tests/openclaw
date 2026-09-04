@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
-import { minimatch } from "minimatch";
+import { Minimatch } from "minimatch";
 import { gte as semverGte, valid as validSemver } from "semver";
 import { coerceErrorMessage } from "./lib/error-format.mts";
 import { LOCAL_BUILD_METADATA_DIST_PATHS } from "./lib/local-build-metadata-paths.mts";
@@ -34,6 +34,10 @@ type PackageManifest = Record<string, unknown> & {
 };
 
 type Calver = { day: number; month: number; year: number };
+
+// npm-packlist strict rules force these root files into every package after files rules.
+const NPM_REQUIRED_ROOT_FILE =
+  /^(?:package\.json|(?:readme|copying|licen[cs]e)(?:\.[^/]*[^~$])?)$/iu;
 
 type ShrinkwrapPackage = {
   dev?: unknown;
@@ -327,20 +331,86 @@ function collectRequiredBundledWorkspaceDependencyErrors(
 function collectPackageFilesExclusionErrors(
   packageJson: PackageManifest,
   entries: ReadonlySet<string>,
+  packageRoot: string,
 ): string[] {
-  const exclusions = Array.isArray(packageJson.files)
-    ? packageJson.files.flatMap((entry) =>
-        typeof entry === "string" && entry.startsWith("!") ? [entry.slice(1)] : [],
-      )
-    : [];
-  return [...entries]
-    .filter((entry) => {
-      const segments = entry.split("/");
-      const entryAndAncestors = segments.map((_, index) => segments.slice(0, index + 1).join("/"));
-      return exclusions.some((pattern) =>
-        entryAndAncestors.some((candidate) => minimatch(candidate, pattern, { dot: true })),
+  if (!Array.isArray(packageJson.files)) {
+    return [];
+  }
+  const ignorePatterns: string[] = [];
+  const strictPatterns: string[] = [];
+  for (const rawEntry of packageJson.files) {
+    if (typeof rawEntry !== "string") {
+      continue;
+    }
+    let file = rawEntry.startsWith("./") ? rawEntry.slice(1) : rawEntry;
+    if (file.endsWith("/*")) {
+      file += "*";
+    }
+    const inverse = `!${file}`;
+    try {
+      const targetPath = path.resolve(
+        path.join(packageRoot, file.replace(/^!+/u, "").replaceAll("\\", "/")),
       );
-    })
+      const relativeTarget = path.relative(packageRoot, targetPath);
+      if (
+        relativeTarget === ".." ||
+        relativeTarget.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(relativeTarget)
+      ) {
+        throw new Error("package files entry escapes package root");
+      }
+      const targetStat = fs.lstatSync(targetPath);
+      if (targetStat.isFile()) {
+        strictPatterns.unshift(inverse);
+      } else if (targetStat.isDirectory()) {
+        ignorePatterns.push(inverse, `${inverse}/**`);
+      }
+    } catch {
+      ignorePatterns.push(inverse);
+    }
+  }
+  const rules = ["*", ...ignorePatterns, ...strictPatterns].map(
+    (pattern) =>
+      new Minimatch(pattern, {
+        dot: true,
+        flipNegate: true,
+        matchBase: true,
+        nocase: true,
+      }),
+  );
+
+  const isIncluded = (entry: string): boolean => {
+    const directoryEntry = entry.endsWith("/");
+    const segments = entry.replace(/\/+$/u, "").split("/").filter(Boolean);
+    const candidates = segments.map((_, index) => ({
+      path: segments.slice(0, index + 1).join("/"),
+      partial: directoryEntry || index < segments.length - 1,
+    }));
+    let included = true;
+    for (const rule of rules) {
+      if (rule.negate === included) {
+        continue;
+      }
+      const matches = candidates.some(
+        ({ path: candidate, partial }) =>
+          rule.match(`/${candidate}`) ||
+          rule.match(candidate) ||
+          (partial &&
+            (rule.match(`/${candidate}/`) ||
+              rule.match(`${candidate}/`) ||
+              (rule.negate && (rule.match(`/${candidate}`, true) || rule.match(candidate, true))))),
+      );
+      if (matches) {
+        included = rule.negate;
+      }
+    }
+    return included;
+  };
+
+  return [...entries]
+    .filter(Boolean)
+    .filter((entry) => !NPM_REQUIRED_ROOT_FILE.test(entry))
+    .filter((entry) => !isIncluded(entry))
     .map((entry) => `root package excludes tar entry ${entry}`);
 }
 
@@ -608,7 +678,7 @@ if (entrySet.has("package.json")) {
   }
 }
 if (packageJson) {
-  errors.push(...collectPackageFilesExclusionErrors(packageJson, entrySet));
+  errors.push(...collectPackageFilesExclusionErrors(packageJson, entrySet, extractedPackageRoot));
   errors.push(...collectPackageExportErrors(packageJson, entrySet));
   try {
     for (const assetPath of listPackagedStaticExtensionAssetOutputs({

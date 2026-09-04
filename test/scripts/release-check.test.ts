@@ -175,6 +175,30 @@ describe("release-check", () => {
 
       writeFileSync(
         join(root, "src/shared/worker-bundle-hash.ts"),
+        'export const WORKER_BUNDLE_ENTRY_PATH = "../worker/main.mjs";\n',
+      );
+      const escapingPathResult = spawnSync(
+        process.execPath,
+        [
+          "--import",
+          join(toolingRoot, "scripts/tsx.mjs"),
+          join(toolingRoot, "scripts/release-check.ts"),
+          "--tarball",
+          tarball,
+        ],
+        {
+          cwd: root,
+          encoding: "utf8",
+          env: { ...process.env, TSX_TSCONFIG_PATH: join(toolingRoot, "tsconfig.json") },
+        },
+      );
+      expect(escapingPathResult.status).toBe(1);
+      expect(escapingPathResult.stderr).toContain(
+        "release-check: target worker artifact WORKER_BUNDLE_ENTRY_PATH must be a normalized relative path within dist/worker.",
+      );
+
+      writeFileSync(
+        join(root, "src/shared/worker-bundle-hash.ts"),
         "export const OTHER_PATH = 1;\n",
       );
       const missingContractResult = spawnSync(

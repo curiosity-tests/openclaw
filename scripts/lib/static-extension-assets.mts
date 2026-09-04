@@ -240,9 +240,14 @@ export function listPackagedStaticExtensionAssetOutputs(
         return [];
       }
       const packageJson = readJsonFile(packageJsonPath, fsImpl);
-      return readPackageStaticAssetEntries(packageJson).flatMap((entry) => {
+      return readPackageStaticAssetEntries(packageJson).map((entry) => {
         const output = normalizePackageRelativePath(entry.output);
-        return output ? [toPosixPath(path.posix.join("dist", "extensions", dirName, output))] : [];
+        if (!output) {
+          throw new Error(
+            `extension ${dirName} static asset output must be a package-relative path`,
+          );
+        }
+        return toPosixPath(path.posix.join("dist", "extensions", dirName, output));
       });
     })
     .toSorted((left, right) => left.localeCompare(right));

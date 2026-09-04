@@ -16,7 +16,7 @@ import {
 } from "node:fs";
 import type { Dirent } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve, win32 } from "node:path";
+import { basename, dirname, join, posix, resolve, win32 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { extract } from "tar";
@@ -1287,7 +1287,21 @@ async function verifyPackedContents(
               `release-check: target worker artifact ${name} must be a non-empty path string.`,
             );
           }
-          return `dist/worker/${value}`;
+          const normalizedPath = posix.normalize(value);
+          const workerPath = posix.join("dist/worker", normalizedPath);
+          if (
+            value !== value.trim() ||
+            value !== normalizedPath ||
+            value.includes("\\") ||
+            normalizedPath.split("/").includes("..") ||
+            win32.isAbsolute(value) ||
+            !workerPath.startsWith("dist/worker/")
+          ) {
+            throw new Error(
+              `release-check: target worker artifact ${name} must be a normalized relative path within dist/worker.`,
+            );
+          }
+          return workerPath;
         })
     : [];
   if (existsSync(workerProducerPath) && workerDeployEntrypoints.length === 0) {

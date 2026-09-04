@@ -103,6 +103,21 @@ function withTarball(
             "dist/control-ui/index.html": "<!doctype html><openclaw-app></openclaw-app>",
             "dist/control-ui/assets/app.js": "console.log('ok');\n",
           };
+    const declaredFiles = Array.isArray(options.packageJson?.files)
+      ? options.packageJson.files
+      : [];
+    const fixturePackageFiles = Array.isArray(options.packageJson?.files)
+      ? [
+          ...(options.includeWorkspaceTemplates === false ? [] : ["docs/reference/templates/**"]),
+          ...(options.includeLifecycleMarker === false
+            ? []
+            : [
+                PACKAGE_LIFECYCLE_PENDING_RELATIVE_PATH,
+                PACKAGE_LIFECYCLE_MARKER_CONTRACT_RELATIVE_PATH,
+              ]),
+          ...declaredFiles,
+        ]
+      : undefined;
     const packageInventory = [
       ...new Set([
         ...inventory,
@@ -121,6 +136,7 @@ function withTarball(
           ? { scripts: { postinstall: "node scripts/postinstall-bundled-plugins.mjs" } }
           : {}),
         ...options.packageJson,
+        ...(fixturePackageFiles ? { files: fixturePackageFiles } : {}),
       }),
     );
     if (options.inventoryBody !== null) {
@@ -145,9 +161,6 @@ function withTarball(
             [PACKAGE_LIFECYCLE_PENDING_RELATIVE_PATH]: "pending\n",
             [PACKAGE_LIFECYCLE_MARKER_CONTRACT_RELATIVE_PATH]: "export {};\n",
           };
-    const declaredFiles = Array.isArray(options.packageJson?.files)
-      ? options.packageJson.files
-      : [];
     const shrinkwrapFile =
       (options.includeShrinkwrap ?? declaredFiles.includes("npm-shrinkwrap.json"))
         ? {
@@ -551,6 +564,7 @@ describe("check-openclaw-package-tarball", () => {
     ["extension file", "dist/extensions/slack/runtime.js", "!dist/extensions/slack/**"],
     ["generated docs", "docs/.generated/config-baseline.json", "!docs/.generated/**"],
     ["build metadata", "dist/plugin-sdk/.tsbuildinfo", "!dist/plugin-sdk/.tsbuildinfo"],
+    ["root-anchored file", "dist/private/key", "!/dist/private/**"],
   ])("rejects a packaged %s excluded by package metadata", (_, relativePath, exclusion) => {
     checkTarball({
       inventory: ["dist/index.js", relativePath],
@@ -560,6 +574,57 @@ describe("check-openclaw-package-tarball", () => {
       },
       options: {
         packageJson: { files: ["dist", "docs", exclusion] },
+      },
+      status: "nonzero",
+      stderr: [`root package excludes tar entry ${relativePath}`],
+    });
+  });
+
+  it("rejects tar entries omitted from the package files list", () => {
+    const relativePath = "src/internal.ts";
+    checkTarball({
+      inventory: ["dist/index.js"],
+      files: {
+        "dist/index.js": "export {};\n",
+        [relativePath]: "export {};\n",
+      },
+      options: {
+        packageJson: { files: ["dist"] },
+      },
+      status: "nonzero",
+      stderr: [`root package excludes tar entry ${relativePath}`],
+    });
+  });
+
+  it.each([
+    ["after", ["dist", "!dist/private/**", "dist/private/public.js"]],
+    ["before", ["dist/private/public.js", "dist", "!dist/private/**"]],
+  ])("accepts exact files that package metadata re-includes %s exclusions", (_, filesList) => {
+    const relativePath = "dist/private/public.js";
+    checkTarball({
+      inventory: ["dist/index.js", relativePath],
+      files: {
+        "dist/index.js": "export {};\n",
+        [relativePath]: "export {};\n",
+      },
+      options: {
+        packageJson: { files: filesList },
+      },
+      status: 0,
+      successText: true,
+    });
+  });
+
+  it("matches package metadata exclusions case-insensitively like npm", () => {
+    const relativePath = "dist/Private/key";
+    checkTarball({
+      inventory: ["dist/index.js", relativePath],
+      files: {
+        "dist/index.js": "export {};\n",
+        [relativePath]: "secret\n",
+      },
+      options: {
+        packageJson: { files: ["dist", "!dist/private/**"] },
       },
       status: "nonzero",
       stderr: [`root package excludes tar entry ${relativePath}`],
@@ -577,6 +642,35 @@ describe("check-openclaw-package-tarball", () => {
       options: {
         filesOnlyArchive: true,
         packageJson: { files: ["dist", "!dist/**/*.app"] },
+      },
+      status: "nonzero",
+      stderr: [`root package excludes tar entry ${relativePath}`],
+    });
+  });
+
+  it("accepts npm-required root files despite package metadata exclusions", () => {
+    checkTarball({
+      files: {
+        "dist/index.js": "export {};\n",
+        "README.md": "# OpenClaw\n",
+      },
+      options: {
+        packageJson: { files: ["dist", "!README*"] },
+      },
+      status: 0,
+      successText: true,
+    });
+  });
+
+  it("rejects excluded descendants of required-file-like root directories", () => {
+    const relativePath = "README.assets/private.txt";
+    checkTarball({
+      files: {
+        "dist/index.js": "export {};\n",
+        [relativePath]: "private\n",
+      },
+      options: {
+        packageJson: { files: ["dist", "!README.assets/**"] },
       },
       status: "nonzero",
       stderr: [`root package excludes tar entry ${relativePath}`],
@@ -635,6 +729,35 @@ describe("check-openclaw-package-tarball", () => {
       options: { postinstall: true },
       status: "nonzero",
       stderr: ["unreadable packaged extension asset metadata:"],
+    });
+  });
+
+  it("fails closed for invalid packaged extension asset outputs", () => {
+    const extensionManifest = "dist/extensions/example/package.json";
+    checkTarball({
+      inventory: ["dist/index.js", extensionManifest],
+      files: {
+        "dist/index.js": "export {};\n",
+        [extensionManifest]: JSON.stringify({
+          name: "@openclaw/example",
+          openclaw: {
+            build: {
+              staticAssets: [
+                {
+                  source: "./assets/runtime.js",
+                  output: "../assets/runtime.js",
+                },
+              ],
+            },
+          },
+        }),
+      },
+      options: { postinstall: true },
+      status: "nonzero",
+      stderr: [
+        "unreadable packaged extension asset metadata:",
+        "extension example static asset output must be a package-relative path",
+      ],
     });
   });
 
