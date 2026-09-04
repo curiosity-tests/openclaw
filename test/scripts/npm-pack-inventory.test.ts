@@ -113,6 +113,16 @@ describe("npm pack inventory", () => {
     });
   });
 
+  it("excludes host-npm-version-variant paths from inventory parity", () => {
+    expect(
+      compareNpmPackInventory(
+        ["package.json", "npm-shrinkwrap.json"],
+        ["package.json"],
+        ["npm-shrinkwrap.json"],
+      ),
+    ).toEqual({ extra: [], missing: [] });
+  });
+
   it("accepts npm 12 name-keyed package results", () => {
     const { packageRoot, root } = createPackageFixture();
     const npm = fakeNpmEnvironment(

@@ -18,9 +18,11 @@ type NpmPackInventoryOptions = {
 export function compareNpmPackInventory(
   tarFiles: Iterable<string>,
   npmFiles: Iterable<string>,
+  ignoredPaths: Iterable<string> = [],
 ): { extra: string[]; missing: string[] } {
-  const tarSet = new Set(tarFiles);
-  const npmSet = new Set(npmFiles);
+  const ignored = new Set(ignoredPaths);
+  const tarSet = new Set([...tarFiles].filter((entry) => !ignored.has(entry)));
+  const npmSet = new Set([...npmFiles].filter((entry) => !ignored.has(entry)));
   return {
     extra: [...tarSet].filter((entry) => !npmSet.has(entry)).toSorted(),
     missing: [...npmSet].filter((entry) => !tarSet.has(entry)).toSorted(),

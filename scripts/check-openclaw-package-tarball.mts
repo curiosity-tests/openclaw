@@ -362,6 +362,9 @@ const phaseTimingsEnabled = process.env.OPENCLAW_PACKAGE_TARBALL_CHECK_TIMINGS !
 const TAR_LIST_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 const NPM_PACK_INVENTORY_TIMEOUT_MS = 5 * 60 * 1_000;
 const NPM_PACK_DIAGNOSTIC_PATH_LIMIT = 20;
+// npm 11 and 12 disagree on shrinkwrap packlist inclusion. Its dedicated
+// validation below owns that contract independently of the host npm version.
+const NPM_PACK_VERSION_VARIANT_PATHS = ["npm-shrinkwrap.json"] as const;
 function runPhase<Result>(label: string, action: () => Result): Result {
   const startedAt = performance.now();
   try {
@@ -681,7 +684,11 @@ try {
       `check-openclaw-package-tarball: npm pack inventory (npm ${npmInventory.npmVersion}) completed in ${npmInventory.durationMs}ms`,
     );
   }
-  const { extra, missing } = compareNpmPackInventory(tarFileEntries, npmInventory.files);
+  const { extra, missing } = compareNpmPackInventory(
+    tarFileEntries,
+    npmInventory.files,
+    NPM_PACK_VERSION_VARIANT_PATHS,
+  );
   const describePaths = (paths: string[]): string => {
     const examples = paths.slice(0, NPM_PACK_DIAGNOSTIC_PATH_LIMIT).join(", ");
     const omitted = paths.length - NPM_PACK_DIAGNOSTIC_PATH_LIMIT;
