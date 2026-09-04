@@ -1006,8 +1006,7 @@ export function collectForbiddenPackPaths(paths: Iterable<string>): string[] {
       (path) =>
         isLegacyPluginDependencyInstallStagePath(path) ||
         /(^|\/)\.openclaw-runtime-deps-[^/]+(\/|$)/u.test(path) ||
-        path.endsWith("/.openclaw-runtime-deps-stamp.json") ||
-        path.includes("node_modules/"),
+        path.endsWith("/.openclaw-runtime-deps-stamp.json"),
     )
     .toSorted((left, right) => left.localeCompare(right));
 }

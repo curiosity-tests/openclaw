@@ -2,7 +2,7 @@
 import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve as resolvePath, win32 } from "node:path";
-import { bundledDistPluginFile, bundledPluginFile } from "openclaw/plugin-sdk/test-fixtures";
+import { bundledDistPluginFile } from "openclaw/plugin-sdk/test-fixtures";
 import { describe, expect, it } from "vitest";
 import { collectBundledExtensionManifestErrors } from "../scripts/lib/bundled-extension-manifest.ts";
 import { listBundledPluginPackArtifacts } from "../scripts/lib/bundled-plugin-build-entries.mjs";
@@ -465,19 +465,14 @@ describe.skipIf(process.platform === "win32")("collectSkillShellScriptExecutable
 });
 
 describe("collectForbiddenPackPaths", () => {
-  it("blocks all packaged node_modules payloads", () => {
+  it("leaves npm-selected bundled dependency paths to the canonical tarball verifier", () => {
     expect(
       collectForbiddenPackPaths([
         "dist/index.js",
         bundledDistPluginFile("discord", "node_modules/@discordjs/voice/index.js"),
-        bundledPluginFile("tlon", "node_modules/.bin/tlon"),
         "node_modules/.bin/openclaw",
       ]),
-    ).toEqual([
-      bundledDistPluginFile("discord", "node_modules/@discordjs/voice/index.js"),
-      bundledPluginFile("tlon", "node_modules/.bin/tlon"),
-      "node_modules/.bin/openclaw",
-    ]);
+    ).toEqual([]);
   });
 
   it("blocks legacy runtime dependency stamps from npm pack output", () => {
