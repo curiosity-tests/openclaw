@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
-import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
+import { normalizeUniqueTrimmedStringList } from "@openclaw/normalization-core/string-normalization";
 import { formatErrorMessage } from "../infra/errors.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { createLazyPromiseLoader } from "../shared/lazy-runtime.js";
@@ -341,12 +341,17 @@ function deleteIndexedKey(index: Map<string, Set<string>>, key: string, taskId: 
   }
 }
 
-function getTaskRelatedSessionIndexKeys(task: Pick<TaskRecord, "ownerKey" | "childSessionKey">) {
-  return uniqueStrings(
-    [normalizeOptionalString(task.ownerKey), normalizeOptionalString(task.childSessionKey)].filter(
-      Boolean,
-    ) as string[],
-  );
+type TaskRelatedSessionKeys = Pick<
+  TaskRecord,
+  "requesterSessionKey" | "ownerKey" | "childSessionKey"
+>;
+
+function getTaskRelatedSessionIndexKeys(task: TaskRelatedSessionKeys) {
+  return normalizeUniqueTrimmedStringList([
+    task.requesterSessionKey,
+    task.ownerKey,
+    task.childSessionKey,
+  ]);
 }
 
 export function addOwnerKeyIndex(taskId: string, task: Pick<TaskRecord, "ownerKey">) {
@@ -381,19 +386,13 @@ export function deleteParentFlowIdIndex(taskId: string, task: Pick<TaskRecord, "
   deleteIndexedKey(taskIdsByParentFlowId, key, taskId);
 }
 
-export function addRelatedSessionKeyIndex(
-  taskId: string,
-  task: Pick<TaskRecord, "ownerKey" | "childSessionKey">,
-) {
+export function addRelatedSessionKeyIndex(taskId: string, task: TaskRelatedSessionKeys) {
   for (const sessionKey of getTaskRelatedSessionIndexKeys(task)) {
     addIndexedKey(taskIdsByRelatedSessionKey, sessionKey, taskId);
   }
 }
 
-export function deleteRelatedSessionKeyIndex(
-  taskId: string,
-  task: Pick<TaskRecord, "ownerKey" | "childSessionKey">,
-) {
+export function deleteRelatedSessionKeyIndex(taskId: string, task: TaskRelatedSessionKeys) {
   for (const sessionKey of getTaskRelatedSessionIndexKeys(task)) {
     deleteIndexedKey(taskIdsByRelatedSessionKey, sessionKey, taskId);
   }

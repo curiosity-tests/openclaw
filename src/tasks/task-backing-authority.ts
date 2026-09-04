@@ -116,7 +116,14 @@ export function createNextAcpTaskBackingDetail(params: {
   for (const taskId of taskIdsByRelatedSessionKey.get(params.childSessionKey) ?? []) {
     const task = tasks.get(taskId);
     const instance = task ? readTaskBackingInstance(task.detail) : undefined;
-    if (task && instance?.runtime === "acp" && isCanonicalBackingTask(task)) {
+    // Generation history retains its owner/child scope when the shared index includes requesters.
+    if (
+      task &&
+      (task.ownerKey.trim() === params.childSessionKey ||
+        task.childSessionKey?.trim() === params.childSessionKey) &&
+      instance?.runtime === "acp" &&
+      isCanonicalBackingTask(task)
+    ) {
       generation = Math.max(generation, instance.generation);
     }
   }

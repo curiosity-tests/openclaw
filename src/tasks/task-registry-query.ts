@@ -183,12 +183,14 @@ export async function listTaskRecordPage(params: {
     if (params.expectedRevision !== undefined && params.expectedRevision !== revision) {
       return err("cursor_stale");
     }
-    const scanLimit = tasks.size;
+    const source =
+      (sessionKey ? taskIdsByRelatedSessionKey.get(sessionKey) : tasks) ?? new Set<string>();
+    const scanLimit = source.size;
     const window: TaskRecord[] = [];
     let matchingCount = 0;
     let heapReady = false;
     let scannedCount = 0;
-    const iterator = tasks.values();
+    const iterator = source.values();
     let current = iterator.next();
     while (!current.done && scannedCount < scanLimit) {
       // Yield only when another batch exists; completed pages keep their revision.
@@ -196,8 +198,13 @@ export async function listTaskRecordPage(params: {
         await yieldToEventLoop();
       }
       const batch: TaskRecord[] = [];
-      while (!current.done && batch.length < 32 && scannedCount < scanLimit) {
-        batch.push(current.value);
+      // Count visited IDs even when a reset or deletion during the yield removed their records.
+      const batchEnd = Math.min(scannedCount + 32, scanLimit);
+      while (!current.done && scannedCount < batchEnd) {
+        const task = typeof current.value === "string" ? tasks.get(current.value) : current.value;
+        if (task) {
+          batch.push(task);
+        }
         scannedCount += 1;
         current = iterator.next();
       }
