@@ -1,6 +1,6 @@
 import Observation
 
-enum ConnectionTab: CaseIterable {
+enum ConnectionTab: CaseIterable, Hashable {
     case connection
     case gateways
     case debug
