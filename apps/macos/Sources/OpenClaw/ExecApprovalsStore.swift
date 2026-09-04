@@ -235,7 +235,7 @@ enum ExecApprovalsStore {
             normalizedAgents.reserveCapacity(agents.count)
             for (key, var agent) in agents {
                 if let allowlist = agent.allowlist {
-                    let normalized = self.normalizeAllowlistEntries(allowlist, dropInvalid: false).entries
+                    let normalized = self.normalizeAllowlistEntries(allowlist)
                     agent.allowlist = normalized.isEmpty ? nil : normalized
                 }
                 normalizedAgents[key] = agent
@@ -443,19 +443,6 @@ enum ExecApprovalsStore {
         }
     }
 
-    static func resolveAsyncResult(
-        agentId: String?) async -> Result<ExecApprovalsResolved, ExecApprovalsReadError>
-    {
-        let stateDirectoryURL = self.stateDirURL()
-        // Detached work does not inherit task-local values; bind the prepared
-        // root again so one read cannot mix database and socket directories.
-        return await Task.detached(priority: .userInitiated) {
-            self.$scopedStateDirectoryURL.withValue(stateDirectoryURL) {
-                self.resolveResult(agentId: agentId)
-            }
-        }.value
-    }
-
     static func resolveDefaults(from file: ExecApprovalsFile) -> ExecApprovalsResolvedDefaults {
         let defaults = file.defaults ?? ExecApprovalsDefaults()
         return ExecApprovalsResolvedDefaults(
@@ -478,8 +465,7 @@ enum ExecApprovalsStore {
             autoAllowSkills: agentEntry.autoAllowSkills ?? wildcardEntry.autoAllowSkills
                 ?? resolvedDefaults.autoAllowSkills)
         let allowlist = self.normalizeAllowlistEntries(
-            (wildcardEntry.allowlist ?? []) + (agentEntry.allowlist ?? []),
-            dropInvalid: true).entries
+            (wildcardEntry.allowlist ?? []) + (agentEntry.allowlist ?? []))
         let socketPath = self.expandPath(file.socket?.path ?? self.socketPath())
         let token = file.socket?.token ?? ""
         return ExecApprovalsResolved(
@@ -490,12 +476,6 @@ enum ExecApprovalsStore {
             agent: resolvedAgent,
             allowlist: allowlist,
             file: file)
-    }
-
-    static func resolveDefaultsAsyncResult() async
-        -> Result<ExecApprovalsResolvedDefaults, ExecApprovalsReadError>
-    {
-        await self.resolveAsyncResult(agentId: nil).map(\.defaults)
     }
 }
 
@@ -840,12 +820,9 @@ extension ExecApprovalsStore {
     private static func normalizedPattern(_ pattern: String?) -> String? {
         switch ExecApprovalHelpers.validateAllowlistPattern(pattern) {
         case let .valid(normalized):
-            return normalized.lowercased()
-        case .invalid(.empty):
-            return nil
+            normalized.lowercased()
         case .invalid:
-            let trimmed = pattern?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return trimmed.isEmpty ? nil : trimmed.lowercased()
+            nil
         }
     }
 
@@ -906,13 +883,9 @@ extension ExecApprovalsStore {
         }
     }
 
-    private static func normalizeAllowlistEntries(
-        _ entries: [ExecAllowlistEntry],
-        dropInvalid: Bool) -> (entries: [ExecAllowlistEntry], rejected: [ExecAllowlistRejectedEntry])
-    {
+    private static func normalizeAllowlistEntries(_ entries: [ExecAllowlistEntry]) -> [ExecAllowlistEntry] {
         var normalized: [ExecAllowlistEntry] = []
         normalized.reserveCapacity(entries.count)
-        var rejected: [ExecAllowlistRejectedEntry] = []
 
         for entry in entries {
             var migrated = self.migrateLegacyPattern(entry)
@@ -936,37 +909,20 @@ extension ExecApprovalsStore {
                         lastUsedAt: migrated.lastUsedAt,
                         lastUsedCommand: migrated.lastUsedCommand,
                         lastResolvedPath: normalizedResolvedPath))
-            case let .invalid(reason):
-                if dropInvalid {
-                    rejected.append(
-                        ExecAllowlistRejectedEntry(
-                            id: migrated.id,
-                            pattern: trimmedPattern,
-                            reason: reason))
-                } else if reason != .empty {
-                    normalized.append(
-                        ExecAllowlistEntry(
-                            id: migrated.id,
-                            pattern: trimmedPattern,
-                            source: migrated.source,
-                            commandText: migrated.commandText,
-                            argPattern: normalizedArgPattern,
-                            lastUsedAt: migrated.lastUsedAt,
-                            lastUsedCommand: migrated.lastUsedCommand,
-                            lastResolvedPath: normalizedResolvedPath))
-                }
+            case .invalid:
+                continue
             }
         }
 
-        return (normalized, rejected)
+        return normalized
     }
 
     private static func mergeAgents(
         current: ExecApprovalsAgent,
         legacy: ExecApprovalsAgent) -> ExecApprovalsAgent
     {
-        let currentAllowlist = self.normalizeAllowlistEntries(current.allowlist ?? [], dropInvalid: false).entries
-        let legacyAllowlist = self.normalizeAllowlistEntries(legacy.allowlist ?? [], dropInvalid: false).entries
+        let currentAllowlist = self.normalizeAllowlistEntries(current.allowlist ?? [])
+        let legacyAllowlist = self.normalizeAllowlistEntries(legacy.allowlist ?? [])
         var seen = Set<ExecAllowlistEntryMatchKey>()
         var allowlist: [ExecAllowlistEntry] = []
         func append(_ entry: ExecAllowlistEntry) {

@@ -55,21 +55,6 @@ final class VoiceWakeGlobalSyncScheduler {
     }
 }
 
-enum ExecApprovalsPolicyLoadState: Equatable {
-    case loading
-    case available
-    case unavailable(String)
-
-    var isAvailable: Bool {
-        self == .available
-    }
-
-    var errorMessage: String? {
-        guard case let .unavailable(message) = self else { return nil }
-        return message
-    }
-}
-
 @MainActor
 @Observable
 final class AppState {

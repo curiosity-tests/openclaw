@@ -250,10 +250,7 @@ struct StatusMenuDescriptorTests {
             sessionId: nil,
             thinkingLevel: nil,
             verboseLevel: nil,
-            systemSent: false,
-            abortedLastRun: false,
-            tokens: SessionTokenStats(input: 0, output: 0, total: 0, contextTokens: 200_000),
-            model: nil)
+            tokens: SessionTokenStats(total: 0, contextTokens: 200_000))
     }
 
     private static func approval(_ id: String, sessionKey: String?) -> ExecApprovalQueueItem {

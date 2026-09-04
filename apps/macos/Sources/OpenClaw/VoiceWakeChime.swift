@@ -19,7 +19,7 @@ enum VoiceWakeChime: Codable, Equatable {
         case .none:
             "No Sound"
         case let .system(name):
-            SoundEffectCatalog.displayName(for: name)
+            name
         case let .custom(displayName, _):
             displayName
         }

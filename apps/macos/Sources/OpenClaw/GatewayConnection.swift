@@ -1329,15 +1329,6 @@ extension GatewayConnection {
         return self.cachedGatewayVersion()
     }
 
-    func snapshotPaths() -> (configPath: String?, stateDir: String?) {
-        guard let snapshot = lastSnapshot else { return (nil, nil) }
-        let configPath = snapshot.snapshot.configpath?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let stateDir = snapshot.snapshot.statedir?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return (
-            configPath?.isEmpty == false ? configPath : nil,
-            stateDir?.isEmpty == false ? stateDir : nil)
-    }
-
     func subscribe(bufferingNewest: Int = 100) -> AsyncStream<PushDelivery> {
         let id = UUID()
         let snapshot = self.lastSnapshot

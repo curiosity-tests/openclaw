@@ -55,23 +55,6 @@ struct ExecApprovalsStoreRefactorTests {
     }
 
     @Test
-    func `task scoped state directory survives detached async reads`() async throws {
-        try await self.withTempStateDir { stateDirectoryURL in
-            _ = try Self.updateDefaultsFixture { defaults in
-                defaults.security = .allowlist
-                defaults.ask = .onMiss
-            }.get()
-
-            let resolved = try await ExecApprovalsStore.resolveDefaultsAsyncResult().get()
-
-            #expect(resolved.security == .allowlist)
-            #expect(resolved.ask == .onMiss)
-            #expect(ExecApprovalsStore.databaseURL() == ExecApprovalsSQLiteStore.databaseURL(
-                stateDirectoryURL: stateDirectoryURL))
-        }
-    }
-
-    @Test
     func `migration cache logs once and recovers after the legacy identity clears`() {
         let stateDirectoryURL = URL(fileURLWithPath: "/tmp/openclaw-migration-cache-test")
         let legacyFileURL = stateDirectoryURL.appendingPathComponent("exec-approvals.json")

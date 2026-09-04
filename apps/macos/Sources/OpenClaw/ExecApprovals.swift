@@ -43,27 +43,11 @@ enum ExecApprovalDecision: String, Codable, Equatable {
 
 enum ExecAllowlistPatternValidationReason: String, Codable, Equatable, Sendable {
     case empty
-    case missingPathComponent
-
-    var message: String {
-        switch self {
-        case .empty:
-            "Pattern cannot be empty."
-        case .missingPathComponent:
-            "Path patterns only. Include '/', '~', or '\\\\'."
-        }
-    }
 }
 
 enum ExecAllowlistPatternValidation: Equatable {
     case valid(String)
     case invalid(ExecAllowlistPatternValidationReason)
-}
-
-struct ExecAllowlistRejectedEntry: Equatable {
-    let id: String
-    let pattern: String
-    let reason: ExecAllowlistPatternValidationReason
 }
 
 struct ExecAllowlistUse: Sendable {
@@ -99,30 +83,11 @@ enum ExecApprovalsConditionalSaveResult {
 enum ExecApprovalsMutationError: Error, Equatable, Sendable {
     case invalidPattern(ExecAllowlistPatternValidationReason)
     case unavailable
-
-    var message: String {
-        switch self {
-        case let .invalidPattern(reason):
-            reason.message
-        case .unavailable:
-            "Could not save exec approvals. Last known settings are shown; retry the change."
-        }
-    }
 }
 
 enum ExecApprovalsReadError: Error, Equatable, Sendable {
     case migrationRequired(ExecApprovalsLegacyMigrationRequiredError)
     case unavailable
-
-    var message: String {
-        switch self {
-        case let .migrationRequired(error):
-            "Exec approvals need migration — run openclaw doctor --fix with " +
-                "OPENCLAW_STATE_DIR set to \(error.stateDirectoryURL.path)."
-        case .unavailable:
-            "Exec approvals unavailable. Retry to refresh."
-        }
-    }
 }
 
 struct ExecApprovalsResolved: Sendable {

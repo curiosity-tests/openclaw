@@ -32,6 +32,7 @@ enum OpenClawProcessEntrypoint {
 }
 
 struct OpenClawApp: App {
+    // periphery:ignore - SwiftUI installs the application delegate through this property wrapper.
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @Environment(\.openWindow) private var openWindow
     @State private var state: AppState
