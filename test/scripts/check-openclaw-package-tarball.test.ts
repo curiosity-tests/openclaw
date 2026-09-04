@@ -80,6 +80,7 @@ function withTarball(
     includeCodeModeWorker?: boolean;
     includeCodeModeWorkerInInventory?: boolean;
     includeControlUi?: boolean;
+    emptyDirectories?: string[];
     filesOnlyArchive?: boolean;
     includeLifecycleMarker?: boolean;
     includeShrinkwrap?: boolean;
@@ -186,6 +187,9 @@ function withTarball(
       const filePath = join(packageRoot, relativePath);
       mkdirSync(dirname(filePath), { recursive: true });
       writeFileSync(filePath, body);
+    }
+    for (const relativePath of options.emptyDirectories ?? []) {
+      mkdirSync(join(packageRoot, relativePath), { recursive: true });
     }
     // The tarball mode gate requires world-readable entries; pin the fixture
     // against restrictive host umasks the way the packer normalizes artifacts.
@@ -1022,6 +1026,16 @@ describe("check-openclaw-package-tarball", () => {
       stderr: [
         "package.json declares missing tar entry scripts/lib/recommended-tool-installs.json",
       ],
+    },
+    {
+      name: "rejects empty directories for literal package files declarations",
+      files: { "dist/index.js": "export {};\n" },
+      options: {
+        emptyDirectories: ["assets"],
+        packageJson: { files: ["dist", "assets"] },
+      },
+      status: "nonzero",
+      stderr: ["package.json declares missing tar entry assets"],
     },
     {
       name: "rejects npm-shrinkwrap.json when package.json does not declare it",

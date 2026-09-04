@@ -624,7 +624,7 @@ if (entrySet.has("package.json")) {
   }
 }
 if (packageJson) {
-  errors.push(...collectMissingDeclaredPackageFileErrors(packageJson, entrySet));
+  errors.push(...collectMissingDeclaredPackageFileErrors(packageJson, new Set(tarFileEntries)));
   errors.push(...collectPackageExportErrors(packageJson, entrySet));
   try {
     for (const assetPath of listPackagedStaticExtensionAssetOutputs({
