@@ -113,6 +113,7 @@ final class DeviceMicrophoneTestModel {
         switch newState {
         case .detected, .failed:
             self.isTesting = false
+            self.tester.stop()
             self.testTask?.cancel()
         default:
             break
@@ -168,7 +169,7 @@ struct DeviceMicrophoneTestView: View {
                     isTesting: self.$model.isTesting,
                     onToggle: self.model.toggleTest)
             } else {
-                Text("Voice Wake requires macOS 26 or newer.")
+                Text("Voice Wake requires macOS 26 or newer")
                     .foregroundStyle(.secondary)
             }
         }

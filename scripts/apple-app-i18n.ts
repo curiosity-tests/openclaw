@@ -133,7 +133,7 @@ const LOCALIZED_WRAPPER_CONTRACTS: Record<string, readonly string[]> = {
     "Text(verbatim: value)",
   ],
   "apps/macos/Sources/OpenClaw/DeviceSettingsPanels.swift": [
-    'String(localized: "Quick Chat Shortcut")',
+    'String(localized: "Quick Chat shortcut")',
     'String(localized: "Microphone Test")',
     'Button("Done")',
   ],

@@ -11,6 +11,7 @@ final class DashboardDeviceSettingsMessageHandler: NSObject, WKScriptMessageHand
     private let requests = DeviceSettingsRequestQueue()
     private let microphoneObserver = AudioInputDeviceObserver()
     private var refreshTask: Task<Void, Never>?
+    private var consentAlert: NSAlert?
 
     func userContentController(_: WKUserContentController, didReceive message: WKScriptMessage) {
         self.owner?.receiveDeviceSettingsMessage(message)
@@ -18,7 +19,7 @@ final class DashboardDeviceSettingsMessageHandler: NSObject, WKScriptMessageHand
 
     func startObserving() {
         guard self.observers.isEmpty else { return }
-        PermissionMonitor.shared.register()
+        // Refresh on activation, explicit status requests, and permission changes; never start a TCC poll.
         let center = NotificationCenter.default
         for name in [
             NSApplication.didBecomeActiveNotification,
@@ -46,7 +47,9 @@ final class DashboardDeviceSettingsMessageHandler: NSObject, WKScriptMessageHand
             NotificationCenter.default.removeObserver(observer)
         }
         self.observers.removeAll()
-        PermissionMonitor.shared.unregister()
+        if let alert = self.consentAlert, let parent = alert.window.sheetParent {
+            parent.endSheet(alert.window, returnCode: .cancel)
+        }
         self.refreshTask?.cancel()
         self.refreshTask = nil
         self.requests.cancel()
@@ -64,6 +67,23 @@ final class DashboardDeviceSettingsMessageHandler: NSObject, WKScriptMessageHand
             else { return }
             await owner.applyDeviceSettingsRequest(request)
         }
+    }
+
+    func confirm(_ consent: DeviceSettingsConsent) async -> Bool {
+        guard !Task.isCancelled, self.consentAlert == nil,
+              let window = self.owner?.window, self.owner?.isWindowOpen == true,
+              window.attachedSheet == nil
+        else { return false }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = consent.message
+        alert.informativeText = consent.detail
+        alert.addButton(withTitle: String(localized: "Cancel")).keyEquivalent = "\r"
+        alert.addButton(withTitle: String(localized: "Allow")).keyEquivalent = ""
+        self.consentAlert = alert
+        defer { self.consentAlert = nil }
+        let response = await alert.beginSheetModal(for: window)
+        return !Task.isCancelled && response == .alertSecondButtonReturn
     }
 
     func refresh(refreshAvailability: Bool = false) {

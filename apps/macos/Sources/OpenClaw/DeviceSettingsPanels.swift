@@ -10,7 +10,7 @@ final class DeviceSettingsPanels: NSObject, NSWindowDelegate {
     private var microphoneTest: DeviceMicrophoneTestModel?
 
     func showQuickChatShortcut(parentWindow: NSWindow?, onClose: @escaping () -> Void) {
-        self.show(title: String(localized: "Quick Chat Shortcut"), parentWindow: parentWindow, onClose: onClose) {
+        self.show(title: String(localized: "Quick Chat shortcut"), parentWindow: parentWindow, onClose: onClose) {
             KeyboardShortcuts.Recorder(for: .toggleQuickChat)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)

@@ -14,7 +14,14 @@ macOS permission grants are fragile. TCC associates a permission grant with the 
 Open **Dashboard → Settings → This Mac → Permissions** in the macOS app to
 check each permission, request access, or open its macOS System Settings pane.
 The page also controls location access and precision. Permission status refreshes
-when you return to the app after changing a grant in System Settings.
+when you return to the app after changing a grant in System Settings, focus the
+Dashboard, or complete a permission request. Open Dashboard windows do not start
+background permission polling.
+
+Enabling camera access, Computer Control, the Peekaboo bridge, or browser cookie
+sync requires a native confirmation with **Cancel** selected by default. Adding
+cookie domains or changing the destination while sync is enabled also requires
+confirmation. Disabling these capabilities takes effect immediately.
 
 ## Requirements for stable permissions
 

@@ -3,6 +3,33 @@ import Testing
 
 @MainActor
 struct DeviceSettingsRequestQueueTests {
+    @Test func `requests wait for the active confirmation before running in order`() async {
+        let queue = DeviceSettingsRequestQueue()
+        let events = AsyncStream<Void>.makeStream()
+        var iterator = events.stream.makeAsyncIterator()
+        var release: CheckedContinuation<Void, Never>?
+        var order: [Int] = []
+        queue.enqueue {
+            order.append(1)
+            await withCheckedContinuation { continuation in
+                release = continuation
+                events.continuation.yield(())
+            }
+            order.append(2)
+        }
+        await iterator.next()
+        queue.enqueue {
+            order.append(3)
+            events.continuation.yield(())
+        }
+        #expect(order == [1])
+        release?.resume()
+        await iterator.next()
+        #expect(order == [1, 2, 3])
+        queue.cancel()
+        events.continuation.finish()
+    }
+
     @Test func `closing cancels the active request and drops queued work before reopening`() async {
         let queue = DeviceSettingsRequestQueue()
         let started = AsyncStream<Void>.makeStream()

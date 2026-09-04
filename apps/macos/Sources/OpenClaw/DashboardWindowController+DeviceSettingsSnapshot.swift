@@ -42,7 +42,9 @@ extension DashboardWindowController {
                 showDockIcon: state.showDockIcon,
                 iconAnimationsEnabled: state.iconAnimationsEnabled,
                 launchAtLogin: state.launchAtLogin,
-                launchAtLoginAvailable: self.deviceLaunchAtLoginAvailable,
+                // A moved app can still remove its existing login item; enabling keeps its separate gate.
+                launchAtLoginAvailable: self.deviceLaunchAtLoginAvailable ||
+                    (!AppProfile.current.isActive && state.launchAtLogin),
                 quickChatEnabled: state.quickChatEnabled,
                 quickChatShortcut: KeyboardShortcuts.getShortcut(for: .toggleQuickChat)?.description,
                 debugPaneEnabled: state.debugPaneEnabled),

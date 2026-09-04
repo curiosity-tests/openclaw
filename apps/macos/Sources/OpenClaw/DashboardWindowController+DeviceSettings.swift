@@ -35,7 +35,9 @@ extension DashboardWindowController {
             await self.publishDeviceSettings()
             await BrowserProfileImportModel.shared.refreshAvailability()
         case let .set(key, value):
-            await self.setDeviceSetting(key, value: value)
+            if await self.confirmDeviceSetting(key, value: value) {
+                await self.setDeviceSetting(key, value: value)
+            }
         case let .requestPermission(id):
             _ = await PermissionManager.ensure([id.capability], interactive: true)
             await PermissionMonitor.shared.refreshNow()
@@ -50,6 +52,22 @@ extension DashboardWindowController {
         }
         // All Gateway windows show settings for this Mac; mutations must update each open view.
         NotificationCenter.default.post(name: .openclawDeviceSettingsChanged, object: nil)
+    }
+
+    private func confirmDeviceSetting(_ key: DeviceSettingKey, value: DeviceSettingValue) async -> Bool {
+        let state = AppStateStore.shared
+        guard let consent = DeviceSettingsConsent.required(
+            for: key,
+            value: value,
+            cookieSyncEnabled: state.cookieSyncEnabled,
+            cookieDomains: state.cookieSyncDomains,
+            cookieProfile: state.cookieSyncIntoProfile)
+        else { return true }
+        // Origin trust is not user intent: Gateway-authored pages cannot enable sensitive access on their own.
+        let sourceID = self.notificationSourceID
+        guard await self.deviceSettingsMessageHandler.confirm(consent) else { return false }
+        return !Task.isCancelled && self.isWindowOpen && self.notificationSourceID == sourceID &&
+            !self.isShowingFailurePage && Self.isTrustedLinkSource(self.webView.url, dashboardURL: self.currentURL)
     }
 
     private static let booleanStateSettings: [DeviceSettingKey: ReferenceWritableKeyPath<AppState, Bool>] = [
@@ -97,7 +115,7 @@ extension DashboardWindowController {
         }
         switch key {
         case .launchAtLogin:
-            guard self.deviceLaunchAtLoginAvailable else { return }
+            guard !enabled || self.deviceLaunchAtLoginAvailable else { return }
             state.launchAtLogin = enabled
         case .quickChatEnabled:
             state.quickChatEnabled = enabled

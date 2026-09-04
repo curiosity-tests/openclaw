@@ -169,11 +169,11 @@ describe("Apple app i18n catalogs", () => {
         "Gateways",
         "Live level",
         "Microphone Test",
-        "Quick Chat Shortcut",
+        "Quick Chat shortcut",
         "Searching…",
         "Shelling",
         "Stopped",
-        "Voice Wake requires macOS 26 or newer.",
+        "Voice Wake requires macOS 26 or newer",
         "Waiting",
       ]),
     );
@@ -613,7 +613,7 @@ describe("Apple app i18n catalogs", () => {
       expect(english).toContain(
         '"^[%lld message](inflect: true)" = "^[%lld message](inflect: true)";',
       );
-      expect(english).toContain('"Quick Chat Shortcut" = "Quick Chat Shortcut";');
+      expect(english).toContain('"Quick Chat shortcut" = "Quick Chat shortcut";');
       expect(english).toContain('"Microphone Test" = "Microphone Test";');
       const swedish = await readFile(
         path.join(outputDir, "sv.lproj", "Localizable.strings"),
