@@ -1290,6 +1290,11 @@ async function verifyPackedContents(
           return `dist/worker/${value}`;
         })
     : [];
+  if (existsSync(workerProducerPath) && workerDeployEntrypoints.length === 0) {
+    throw new Error(
+      "release-check: target worker producer is missing WORKER_BUNDLE_*_PATH declarations.",
+    );
+  }
   checkCliBootstrapExternalImports({
     rootDir: packedRoot,
     workerDeployEntrypoints,
