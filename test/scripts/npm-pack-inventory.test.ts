@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -138,6 +138,52 @@ describe("npm pack inventory", () => {
       npmVersion: "12.0.2",
     });
   });
+
+  it.each([
+    { name: "successful pack", exitCode: 0 },
+    { name: "failed pack", exitCode: 23 },
+  ])(
+    "suppresses npm 10 lifecycle scripts and restores package.json after $name",
+    ({ exitCode }) => {
+      const { packageRoot, root } = createPackageFixture();
+      const packageJsonPath = join(packageRoot, "package.json");
+      const capturePath = join(root, "scripts-capture.json");
+      const originalBytes = Buffer.from(
+        '{\n\t"version" : "1.0.0",\n\t"scripts" : { "prepack" : "exit 99" },\n\t"name" : "inventory-fixture"\n}\n',
+      );
+      writeFileSync(packageJsonPath, originalBytes);
+      chmodSync(packageJsonPath, 0o444);
+      const originalMode = statSync(packageJsonPath).mode;
+      const npm = fakeNpmEnvironment(
+        root,
+        [
+          "import fs from 'node:fs';",
+          "if (process.argv.includes('--version')) { process.stdout.write('10.9.4\\n'); process.exit(0); }",
+          "const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));",
+          "fs.writeFileSync(process.env.OPENCLAW_TEST_CAPTURE, JSON.stringify({ hasScripts: Object.hasOwn(packageJson, 'scripts') }));",
+          exitCode === 0
+            ? "process.stdout.write(JSON.stringify([{ files: [{ path: 'package.json' }] }]));"
+            : `process.stderr.write('simulated npm 10 failure\\n'); process.exit(${exitCode});`,
+        ].join("\n"),
+      );
+      npm.sourceEnv.OPENCLAW_TEST_CAPTURE = capturePath;
+
+      if (exitCode === 0) {
+        expect(collectNpmPackInventory(packageRoot, { ...npm, timeoutMs: 2_000 })).toMatchObject({
+          files: ["package.json"],
+          npmVersion: "10.9.4",
+        });
+      } else {
+        expect(() => collectNpmPackInventory(packageRoot, { ...npm, timeoutMs: 2_000 })).toThrow(
+          "npm pack inventory failed: simulated npm 10 failure",
+        );
+      }
+
+      expect(JSON.parse(readFileSync(capturePath, "utf8"))).toEqual({ hasScripts: false });
+      expect(readFileSync(packageJsonPath)).toEqual(originalBytes);
+      expect(statSync(packageJsonPath).mode).toBe(originalMode);
+    },
+  );
 
   it.each([
     {

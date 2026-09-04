@@ -132,6 +132,32 @@ function describeSpawnFailure(
   return `${label} failed${stderr ? `: ${stderr}` : ` with status ${String(result.status)}`}`;
 }
 
+function withoutPackageScripts<T>(packageRoot: string, run: () => T): T {
+  const packageJsonPath = path.join(packageRoot, "package.json");
+  const originalBytes = fs.readFileSync(packageJsonPath);
+  const originalMode = fs.statSync(packageJsonPath).mode;
+  const packageJson = JSON.parse(originalBytes.toString("utf8")) as unknown;
+  if (!isRecord(packageJson)) {
+    throw new Error("package.json must contain an object");
+  }
+  delete packageJson.scripts;
+
+  // Callers provide unique disposable extracted trees, so this synchronous mutation is isolated.
+  try {
+    if ((originalMode & 0o200) === 0) {
+      fs.chmodSync(packageJsonPath, originalMode | 0o200);
+    }
+    fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson));
+    return run();
+  } finally {
+    try {
+      fs.writeFileSync(packageJsonPath, originalBytes);
+    } finally {
+      fs.chmodSync(packageJsonPath, originalMode);
+    }
+  }
+}
+
 export function collectNpmPackInventory(packageRoot: string, options: NpmPackInventoryOptions) {
   const sandboxRoot = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-npm-pack-inventory-"));
   const sandbox = {
@@ -173,24 +199,26 @@ export function collectNpmPackInventory(packageRoot: string, options: NpmPackInv
       runNpm("npm --version", ["--version"], NPM_VERSION_TIMEOUT_MS, 64 * 1024),
     );
     spawnOptions.cwd = packageRoot;
-    const packOutput = runNpm(
-      "npm pack inventory",
-      [
-        "pack",
-        "--dry-run",
-        "--json",
-        "--ignore-scripts",
-        "--offline",
-        "--workspaces=false",
-        "--include-workspace-root=false",
-        "--audit=false",
-        "--fund=false",
-        "--update-notifier=false",
-        "--color=false",
-        "--loglevel=error",
-      ],
-      options.timeoutMs,
-      64 * 1024 * 1024,
+    const packOutput = withoutPackageScripts(packageRoot, () =>
+      runNpm(
+        "npm pack inventory",
+        [
+          "pack",
+          "--dry-run",
+          "--json",
+          "--ignore-scripts",
+          "--offline",
+          "--workspaces=false",
+          "--include-workspace-root=false",
+          "--audit=false",
+          "--fund=false",
+          "--update-notifier=false",
+          "--color=false",
+          "--loglevel=error",
+        ],
+        options.timeoutMs,
+        64 * 1024 * 1024,
+      ),
     );
     if (fs.readdirSync(sandbox.cwd).length !== 0) {
       throw new Error("npm pack inventory wrote files outside the extracted package root");
