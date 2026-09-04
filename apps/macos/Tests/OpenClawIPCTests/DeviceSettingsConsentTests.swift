@@ -10,6 +10,7 @@ struct DeviceSettingsConsentTests {
             .computerControlEnabled: .computerControl,
             .peekabooBridgeEnabled: .peekabooBridge,
             .cameraEnabled: .camera,
+            .activeComputerPresenceEnabled: .activityReporting,
             .wakeEnabled: .voiceWake,
             .locationPrecise: .preciseLocation,
         ]

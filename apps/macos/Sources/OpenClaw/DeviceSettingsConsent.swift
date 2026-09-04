@@ -8,6 +8,7 @@ enum DeviceSettingsConsent: Equatable {
     case computerControl
     case peekabooBridge
     case camera
+    case activityReporting
     case voiceWake
     case locationWhileUsing
     case locationAlways
@@ -26,6 +27,7 @@ enum DeviceSettingsConsent: Equatable {
         case (.computerControlEnabled, .boolean(true)): .computerControl
         case (.peekabooBridgeEnabled, .boolean(true)): .peekabooBridge
         case (.cameraEnabled, .boolean(true)): .camera
+        case (.activeComputerPresenceEnabled, .boolean(true)): .activityReporting
         case (.wakeEnabled, .boolean(true)): .voiceWake
         case (.locationPrecise, .boolean(true)): .preciseLocation
         case let (.locationMode, .string(mode)):
@@ -67,6 +69,8 @@ enum DeviceSettingsConsent: Equatable {
             String(localized: "Enable the Peekaboo bridge on this Mac?")
         case .camera:
             String(localized: "Allow the Gateway to use this Mac's camera?")
+        case .activityReporting:
+            String(localized: "Share this Mac's activity with the Gateway?")
         case .voiceWake:
             String(localized: "Enable continuous microphone listening?")
         case .locationWhileUsing:
@@ -121,6 +125,8 @@ enum DeviceSettingsConsent: Equatable {
                 """)
         case .voiceWake:
             String(localized: "Voice Wake will continuously listen for wake phrases through this Mac's microphone.")
+        case .activityReporting:
+            String(localized: "The Gateway will receive this Mac's idle time to determine when you are active.")
         case .locationWhileUsing:
             String(localized: "The Gateway can request this Mac's location while OpenClaw is in use.")
         case .locationAlways:

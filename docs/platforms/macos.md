@@ -62,6 +62,8 @@ cookie sync, and permissions. Device voice controls appear under
 **Settings → Updates → This Mac**. These device controls appear only in the
 macOS app's embedded Dashboard, not in an ordinary browser.
 
+## Connection
+
 Choose **Connection…** to open the small native window even when the Gateway
 is unreachable. Its **Connection** tab contains local Gateway status, remote/SSH
 options, Tailscale, and discovery; **Gateways** manages saved Gateway profiles.
@@ -69,12 +71,19 @@ A **Debug** tab appears while the developer toggle in **This Mac → Developer**
 is enabled. **About OpenClaw** opens the standard macOS About panel with the app
 version, build information, and credits.
 
+App-local settings (permissions, Quick Chat, voice, updates) live in
+Dashboard → Settings → This Mac and require a Gateway release that includes those pages.
+The Connection tab's **Open Dashboard Settings** button opens that Dashboard.
+
 ## Updates
 
 Open **Dashboard → Settings → Updates → This Mac** to turn automatic app updates
 on or off, choose **Check for Updates…**, and see the installed app version and
 build. The page explains when updates are unavailable, including while a named
 app profile is active.
+
+App-local settings (permissions, Quick Chat, voice, updates) live in
+Dashboard → Settings → This Mac and require a Gateway release that includes those pages.
 
 If the primary Gateway connection rejects the app's protocol version, the app
 shows an update alert and keeps the explanation in its connection status.
