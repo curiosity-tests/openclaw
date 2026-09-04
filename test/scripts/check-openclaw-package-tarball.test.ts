@@ -21,6 +21,7 @@ import {
   PACKAGE_LIFECYCLE_PENDING_RELATIVE_PATH,
 } from "../../scripts/lib/package-lifecycle-marker.mjs";
 import { WORKSPACE_TEMPLATE_PACK_PATHS } from "../../scripts/lib/workspace-bootstrap-smoke.mts";
+import { resolvePnpmRunner } from "../../scripts/pnpm-runner.mts";
 
 const CHECK_SCRIPT = "scripts/check-openclaw-package-tarball.mts";
 const PUBLIC_CHECK_SCRIPT = "scripts/check-openclaw-package-tarball.mjs";
@@ -193,19 +194,21 @@ function withTarball(
     const tarball = options.pnpmPack
       ? join(root, `openclaw-${version}.tgz`)
       : join(root, process.platform === "win32" ? "openclaw.tgz" : "openclaw:local.tgz");
-    const pack = options.pnpmPack
-      ? spawnSync(
-          "pnpm",
-          [
-            "--dir",
-            packageRoot,
-            "pack",
-            "--config.ignore-scripts=true",
-            "--pack-destination",
-            root,
-          ],
-          { encoding: "utf8" },
-        )
+    const pnpm = options.pnpmPack
+      ? resolvePnpmRunner({
+          cwd: packageRoot,
+          pnpmArgs: ["pack", "--config.ignore-scripts=true", "--pack-destination", root],
+        })
+      : undefined;
+    const pack = pnpm
+      ? spawnSync(pnpm.command, pnpm.args, {
+          cwd: packageRoot,
+          encoding: "utf8",
+          env: process.env,
+          shell: pnpm.shell,
+          timeout: 30_000,
+          windowsVerbatimArguments: pnpm.windowsVerbatimArguments,
+        })
       : spawnSync(
           "tar",
           [
@@ -222,7 +225,7 @@ function withTarball(
             encoding: "utf8",
           },
         );
-    expect(pack.status, pack.stderr).toBe(0);
+    expect(pack.status, pack.stderr || pack.error?.message).toBe(0);
     testBody(tarball, root, packageRoot);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -421,6 +424,7 @@ describe("check-openclaw-package-tarball", () => {
       { "dist/index.js": "export {};\n" },
       (tarball, root) => {
         const marker = join(root, "lifecycle-script-ran");
+        rmSync(marker, { force: true });
         const result = spawnSync(process.execPath, [resolve(CHECK_SCRIPT), tarball], {
           encoding: "utf8",
           env: {

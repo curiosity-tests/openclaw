@@ -1,5 +1,5 @@
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, delimiter, join } from "node:path";
+import { delimiter, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   collectNpmPackInventory,
@@ -54,7 +54,7 @@ function fakeNpmEnvironment(
 }
 
 describe("npm pack inventory", () => {
-  it("runs npm in an isolated empty sandbox with inherited npm config removed", () => {
+  it("runs npm pack from the package root with isolated state and config", () => {
     const { packageRoot, root } = createPackageFixture();
     const capturePath = join(root, "capture.json");
     const npm = fakeNpmEnvironment(
@@ -84,15 +84,13 @@ describe("npm pack inventory", () => {
     };
 
     expect(result).toMatchObject({ files: ["package.json"], npmVersion: "11.12.1" });
-    expect(basename(capture.cwd)).toBe("cwd");
-    expect(capture.cwd).not.toBe(packageRoot);
+    expect(capture.cwd).toBe(packageRoot);
     expect(capture.home).not.toBe(process.env.HOME);
     expect(capture.npmConfigKeys).not.toContain("npm_config_registry");
     expect(capture.npmConfigKeys).not.toContain("NPM_CONFIG_SCRIPT_SHELL");
     expect(capture.args).toEqual(
       expect.arrayContaining([
         "pack",
-        packageRoot,
         "--dry-run",
         "--json",
         "--ignore-scripts",
@@ -100,6 +98,7 @@ describe("npm pack inventory", () => {
         "--workspaces=false",
       ]),
     );
+    expect(capture.args).not.toContain(packageRoot);
   });
 
   it("reports missing and extra paths in normalized sorted order", () => {

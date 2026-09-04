@@ -168,11 +168,11 @@ export function collectNpmPackInventory(packageRoot: string, options: NpmPackInv
     const npmVersion = parseNpmVersion(
       runNpm("npm --version", ["--version"], NPM_VERSION_TIMEOUT_MS, 64 * 1024),
     );
+    spawnOptions.cwd = packageRoot;
     const packOutput = runNpm(
       "npm pack inventory",
       [
         "pack",
-        packageRoot,
         "--dry-run",
         "--json",
         "--ignore-scripts",
