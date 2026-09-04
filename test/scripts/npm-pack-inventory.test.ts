@@ -113,11 +113,32 @@ describe("npm pack inventory", () => {
     });
   });
 
+  it("accepts npm 12 name-keyed package results", () => {
+    const { packageRoot, root } = createPackageFixture();
+    const npm = fakeNpmEnvironment(
+      root,
+      [
+        "if (process.argv.includes('--version')) { process.stdout.write('12.0.2\\n'); process.exit(0); }",
+        `process.stdout.write(JSON.stringify({ "inventory-fixture": { files: [{ path: "package.json" }, { path: "./dist/index.js" }] } }));`,
+      ].join("\n"),
+    );
+
+    expect(collectNpmPackInventory(packageRoot, { ...npm, timeoutMs: 2_000 })).toMatchObject({
+      files: ["dist/index.js", "package.json"],
+      npmVersion: "12.0.2",
+    });
+  });
+
   it.each([
     {
       name: "malformed JSON",
       body: "process.stdout.write('{');",
       error: "npm pack returned invalid JSON",
+    },
+    {
+      name: "multiple package results",
+      body: `process.stdout.write(JSON.stringify([{ files: [] }, { files: [] }]));`,
+      error: "npm pack JSON must contain exactly one package result",
     },
     {
       name: "duplicate paths",

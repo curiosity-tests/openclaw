@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { isRecord } from "../../packages/normalization-core/src/record-coerce.ts";
 import { resolveNpmRunner, type NpmRunnerParams } from "../npm-runner.mts";
+import { resolveNpmJsonEntries } from "./npm-json-output.mts";
 
 const NPM_VERSION_TIMEOUT_MS = 10_000;
 const ISOLATED_ENV_KEYS =
@@ -60,10 +61,11 @@ function parseNpmPackFiles(stdout: string): string[] {
   } catch {
     throw new Error("npm pack returned invalid JSON");
   }
-  if (!Array.isArray(parsed) || parsed.length !== 1 || !isRecord(parsed[0])) {
+  const entries = resolveNpmJsonEntries(parsed);
+  if (entries.length !== 1 || !isRecord(entries[0])) {
     throw new Error("npm pack JSON must contain exactly one package result");
   }
-  const files = parsed[0].files;
+  const files = entries[0].files;
   if (!Array.isArray(files)) {
     throw new Error("npm pack JSON result is missing its files array");
   }

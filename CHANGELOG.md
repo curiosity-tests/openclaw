@@ -39,7 +39,6 @@ Docs: https://docs.openclaw.ai
 
 ### Fixes
 
-- **Release package validation:** compare package tarballs against npm's authoritative dry-run inventory, rejecting npm-excluded cargo while accepting required files and bundled dependency closure.
 - **Update readiness:** select declared health-check owners before loading plugin APIs, preventing unrelated optional Doctor checks from interrupting upgrades while retaining mandatory readiness failures.
 
 - **Ingress and token safety:** bound concurrent pre-auth reads on SMS webhooks, stop delivering commands to a Watch node after its device is revoked, require the per-process nonce on the Copilot Azure BYOK proxy, isolate webhook rate limits by client, let authorized scoped node tokens be managed by their owner, and reject oversized A2A JSON-RPC batches and responses. (#136504, #135904, #134781, #134622, #135617, #134603) Thanks @drobison00 and @eleqtrizit.
