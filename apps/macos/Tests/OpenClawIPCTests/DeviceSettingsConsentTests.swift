@@ -10,10 +10,32 @@ struct DeviceSettingsConsentTests {
             .computerControlEnabled: .computerControl,
             .peekabooBridgeEnabled: .peekabooBridge,
             .cameraEnabled: .camera,
+            .wakeEnabled: .voiceWake,
+            .locationPrecise: .preciseLocation,
         ]
         for key in DeviceSettingKey.allCases where key.valueType == .boolean {
             #expect(try self.consent(key, raw: true) == sensitive[key], "Enable \(key.rawValue)")
             #expect(try self.consent(key, raw: false) == nil, "Disable \(key.rawValue)")
+        }
+    }
+
+    @Test func `location increases need consent but unchanged access and decreases do not`() throws {
+        let transitions: [(DeviceSettingsLocationMode, DeviceSettingsLocationMode, DeviceSettingsConsent?)] = [
+            (.off, .off, nil),
+            (.off, .whileUsing, .locationWhileUsing),
+            (.off, .always, .locationAlways),
+            (.whileUsing, .off, nil),
+            (.whileUsing, .whileUsing, nil),
+            (.whileUsing, .always, .locationAlways),
+            (.always, .off, nil),
+            (.always, .whileUsing, nil),
+            (.always, .always, nil),
+        ]
+        for (current, requested, expected) in transitions {
+            #expect(
+                try self.consent(
+                    .locationMode, raw: requested.rawValue, locationMode: current) == expected,
+                "Location \(current.rawValue) -> \(requested.rawValue)")
         }
     }
 
@@ -40,9 +62,6 @@ struct DeviceSettingsConsentTests {
         let settings: [(DeviceSettingKey, Any)] = [
             (.computerControlProvider, "cua"),
             (.computerControlProvider, "peekaboo"),
-            (.locationMode, "always"),
-            (.locationMode, "whileUsing"),
-            (.locationMode, "off"),
             (.microphone, "test-input"),
             (.microphone, NSNull()),
             (.localePrimary, "en-US"),
@@ -55,7 +74,8 @@ struct DeviceSettingsConsentTests {
 
     private func consent(
         _ key: DeviceSettingKey, raw: Any,
-        enabled: Bool = true) throws -> DeviceSettingsConsent?
+        enabled: Bool = true,
+        locationMode: DeviceSettingsLocationMode = .off) throws -> DeviceSettingsConsent?
     {
         let request = try #require(DeviceSettingsRequest(body: ["type": "set", "key": key.rawValue, "value": raw]))
         guard case let .set(parsedKey, value) = request else {
@@ -64,6 +84,7 @@ struct DeviceSettingsConsentTests {
         }
         return DeviceSettingsConsent.required(
             for: parsedKey, value: value,
-            cookieSyncEnabled: enabled, cookieDomains: ["example.com"], cookieProfile: "imported")
+            cookieSyncEnabled: enabled, cookieDomains: ["example.com"], cookieProfile: "imported",
+            locationMode: locationMode)
     }
 }

@@ -18,10 +18,14 @@ when you return to the app after changing a grant in System Settings, focus the
 Dashboard, or complete a permission request. Open Dashboard windows do not start
 background permission polling.
 
-Enabling camera access, Computer Control, the Peekaboo bridge, or browser cookie
-sync requires a native confirmation with **Cancel** selected by default. Adding
-cookie domains or changing the destination while sync is enabled also requires
-confirmation. Disabling these capabilities takes effect immediately.
+Enabling camera access, Computer Control, the Peekaboo bridge, browser cookie
+sync, or continuous Voice Wake listening requires a native confirmation with
+**Cancel** selected by default. Increasing location access (from Off to While
+Using or Always, or from While Using to Always) and enabling precise location
+also require confirmation. Adding cookie domains requires confirmation even
+before sync is enabled; changing the destination requires it while sync is
+enabled. Disabling these capabilities or decreasing location access takes
+effect without native confirmation.
 
 ## Requirements for stable permissions
 

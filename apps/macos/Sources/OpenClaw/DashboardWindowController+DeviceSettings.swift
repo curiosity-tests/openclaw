@@ -56,12 +56,15 @@ extension DashboardWindowController {
 
     private func confirmDeviceSetting(_ key: DeviceSettingKey, value: DeviceSettingValue) async -> Bool {
         let state = AppStateStore.shared
+        let locationMode = AppDefaults.standard.string(forKey: locationModeKey)
+            .flatMap(OpenClawLocationMode.init(rawValue:)) ?? .off
         guard let consent = DeviceSettingsConsent.required(
             for: key,
             value: value,
             cookieSyncEnabled: state.cookieSyncEnabled,
             cookieDomains: state.cookieSyncDomains,
-            cookieProfile: state.cookieSyncIntoProfile)
+            cookieProfile: state.cookieSyncIntoProfile,
+            locationMode: DeviceSettingsLocationMode(locationMode))
         else { return true }
         // Origin trust is not user intent: Gateway-authored pages cannot enable sensitive access on their own.
         let sourceID = self.notificationSourceID

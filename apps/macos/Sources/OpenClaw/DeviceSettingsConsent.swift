@@ -8,19 +8,32 @@ enum DeviceSettingsConsent: Equatable {
     case computerControl
     case peekabooBridge
     case camera
+    case voiceWake
+    case locationWhileUsing
+    case locationAlways
+    case preciseLocation
 
     static func required(
         for key: DeviceSettingKey,
         value: DeviceSettingValue,
         cookieSyncEnabled: Bool,
         cookieDomains: [String],
-        cookieProfile: String) -> Self?
+        cookieProfile: String,
+        locationMode: DeviceSettingsLocationMode) -> Self?
     {
         switch (key, value) {
         case (.cookieSyncEnabled, .boolean(true)): .cookieSync
         case (.computerControlEnabled, .boolean(true)): .computerControl
         case (.peekabooBridgeEnabled, .boolean(true)): .peekabooBridge
         case (.cameraEnabled, .boolean(true)): .camera
+        case (.wakeEnabled, .boolean(true)): .voiceWake
+        case (.locationPrecise, .boolean(true)): .preciseLocation
+        case let (.locationMode, .string(mode)):
+            switch (locationMode, DeviceSettingsLocationMode(rawValue: mode)) {
+            case (.off, .whileUsing): .locationWhileUsing
+            case (.off, .always), (.whileUsing, .always): .locationAlways
+            default: nil
+            }
         case let (.cookieSyncDomains, .strings(domains)):
             Self.addedCookieDomains(domains, current: cookieDomains)
         case let (.cookieSyncTargetProfile, .string(profile)):
@@ -54,6 +67,14 @@ enum DeviceSettingsConsent: Equatable {
             String(localized: "Enable the Peekaboo bridge on this Mac?")
         case .camera:
             String(localized: "Allow the Gateway to use this Mac's camera?")
+        case .voiceWake:
+            String(localized: "Enable continuous microphone listening?")
+        case .locationWhileUsing:
+            String(localized: "Allow location access while using OpenClaw?")
+        case .locationAlways:
+            String(localized: "Allow location access at any time?")
+        case .preciseLocation:
+            String(localized: "Allow precise location access?")
         }
     }
 
@@ -98,6 +119,14 @@ enum DeviceSettingsConsent: Equatable {
                 localized: """
                 The Gateway can request photos and video from this Mac's camera, subject to macOS permission.
                 """)
+        case .voiceWake:
+            String(localized: "Voice Wake will continuously listen for wake phrases through this Mac's microphone.")
+        case .locationWhileUsing:
+            String(localized: "The Gateway can request this Mac's location while OpenClaw is in use.")
+        case .locationAlways:
+            String(localized: "The Gateway can request this Mac's location even when OpenClaw is not in use.")
+        case .preciseLocation:
+            String(localized: "The Gateway can request this Mac's precise location when location access is enabled.")
         }
     }
 }
