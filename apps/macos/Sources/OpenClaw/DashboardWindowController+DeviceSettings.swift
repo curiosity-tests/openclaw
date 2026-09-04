@@ -170,6 +170,7 @@ extension DashboardWindowController {
             state.voiceWakeMicID = value
         case .localePrimary:
             guard VoiceWakeDeviceOptions.locales().contains(where: { $0.id == value }) else { return }
+            // The System option carries a concrete locale identifier, as the native picker did; never store a sentinel.
             state.voiceWakeLocaleID = value
         default:
             break

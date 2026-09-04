@@ -53,6 +53,7 @@ voice settings. Microphone and speech permissions are under
 - **Hold Right Option to talk**: enables the push-to-talk monitor.
 - If the selected language lacks on-device recognition on this Mac, Voice Wake stays disabled while push-to-talk and Talk Mode remain available.
 - Language and microphone pickers select this Mac's input. **System Default** uses the system microphone.
+- The primary language includes the current system locale marked **(System)**. Selecting it saves its concrete locale identifier (for example, `en_US`), as the native picker did; it does not save an empty string or `system` marker. Existing system markers resolve to this option for display without rewriting the saved preference. Unavailable additional languages are omitted from the displayed selection.
 - The microphone test opens a native panel with a live level meter and a local tester that never forwards speech. Choose **Done** to close it and release the microphone.
 - Trigger words are Gateway settings on the **Talk** page and remain editable in a regular browser. The Mac's wake runtime uses the Primary Gateway's trigger words; opening another Gateway window does not retarget that runtime.
 - If a selected microphone disconnects, the voice runtime temporarily uses the system default and retains the selection for when it returns.
