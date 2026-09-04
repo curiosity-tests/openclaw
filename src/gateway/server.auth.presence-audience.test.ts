@@ -316,13 +316,13 @@ describe("gateway presence audience", () => {
         expect(preauthRead.payload).toBeUndefined();
         expect(unauthenticatedEvents).toEqual([]);
 
+        const idleRows = (presence: SystemPresence[]) =>
+          presence.filter(
+            (entry) => entry.user?.id === idlePerson.user?.id && entry.reason !== "disconnect",
+          );
         const liveIdleRows = async () => {
           expect((await rpcReq(watcher.ws, "health")).ok).toBe(true);
-          return watcher.events
-            .at(-1)!
-            .filter(
-              (entry) => entry.user?.id === idlePerson.user?.id && entry.reason !== "disconnect",
-            );
+          return idleRows(watcher.events.at(-1)!);
         };
         const overlap = await openRecipient("idle", ["operator.read"]);
         const overlappingRows = await liveIdleRows();
@@ -335,10 +335,15 @@ describe("gateway presence audience", () => {
           [idle, 1],
           [overlap, 0],
         ] as const) {
+          const presence = onceMessage<{
+            type: string;
+            event: string;
+            payload: { presence: SystemPresence[] };
+          }>(watcher.ws, (frame) => frame.type === "event" && frame.event === "presence");
           const closed = once(connection.ws, "close");
           connection.ws.close();
-          await closed;
-          const rows = await liveIdleRows();
+          const [event] = await Promise.all([presence, closed]);
+          const rows = idleRows(event.payload.presence);
           expect(rows, "disconnect publishes only the surviving sockets").toHaveLength(remaining);
           if (remaining) {
             expect(rows[0]?.onlineSince).toBe(idlePerson.onlineSince);
