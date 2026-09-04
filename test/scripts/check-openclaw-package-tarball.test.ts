@@ -1010,6 +1010,36 @@ describe("check-openclaw-package-tarball", () => {
         "package.json dependencies.@openclaw/ai must not use workspace protocol workspace:*",
       ],
     },
+    {
+      name: "rejects literal package files declarations omitted from the tarball",
+      files: { "dist/index.js": "export {};\n" },
+      options: {
+        packageJson: {
+          files: ["dist", "scripts/lib/recommended-tool-installs.json"],
+        },
+      },
+      status: "nonzero",
+      stderr: [
+        "package.json declares missing tar entry scripts/lib/recommended-tool-installs.json",
+      ],
+    },
+    {
+      name: "rejects npm-shrinkwrap.json when package.json does not declare it",
+      files: { "dist/index.js": "export {};\n", "npm-shrinkwrap.json": "{}\n" },
+      version: "2026.7.33",
+      status: "nonzero",
+      stderr: ["package tarball must not contain npm-shrinkwrap.json"],
+    },
+    {
+      name: "rejects a package that declares but omits npm-shrinkwrap.json",
+      version: "2026.7.33",
+      options: {
+        includeShrinkwrap: false,
+        packageJson: { files: ["dist", "npm-shrinkwrap.json"] },
+      },
+      status: "nonzero",
+      stderr: ["package.json declares missing tar entry npm-shrinkwrap.json"],
+    },
   ];
   for (const testCase of packageContractCases) {
     it(testCase.name, () => checkTarball(testCase));

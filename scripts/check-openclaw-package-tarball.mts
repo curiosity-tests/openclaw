@@ -357,6 +357,36 @@ function collectPackageExportErrors(
     .map((target) => `package.json export target is missing ${target}`);
 }
 
+function normalizePackageFilesEntry(value: unknown): string {
+  return typeof value === "string"
+    ? value
+        .replaceAll("\\", "/")
+        .trim()
+        .replace(/^\.?\/+/u, "")
+        .toLowerCase()
+    : "";
+}
+
+function collectMissingDeclaredPackageFileErrors(
+  packageJson: PackageManifest,
+  entries: ReadonlySet<string>,
+): string[] {
+  if (!Array.isArray(packageJson.files)) {
+    return [];
+  }
+  const available = [...entries].map((entry) => entry.replace(/\/+$/u, "").toLowerCase());
+  return packageJson.files.flatMap((value) => {
+    const declared = normalizePackageFilesEntry(value);
+    if (!declared || declared.startsWith("!") || /[*?[\]{}()]/u.test(declared)) {
+      return [];
+    }
+    const expected = declared.replace(/\/+$/u, "");
+    return available.some((entry) => entry === expected || entry.startsWith(`${expected}/`))
+      ? []
+      : [`package.json declares missing tar entry ${expected}`];
+  });
+}
+
 const phaseTimingsEnabled = process.env.OPENCLAW_PACKAGE_TARBALL_CHECK_TIMINGS !== "0";
 // Self-contained artifacts can exceed Node's 1 MiB spawnSync output default.
 const TAR_LIST_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
@@ -594,6 +624,7 @@ if (entrySet.has("package.json")) {
   }
 }
 if (packageJson) {
+  errors.push(...collectMissingDeclaredPackageFileErrors(packageJson, entrySet));
   errors.push(...collectPackageExportErrors(packageJson, entrySet));
   try {
     for (const assetPath of listPackagedStaticExtensionAssetOutputs({
@@ -622,7 +653,13 @@ if (requiresCodeModeWorker && !entrySet.has(CODE_MODE_WORKER_PATH)) {
   errors.push(`missing required tar entry ${CODE_MODE_WORKER_PATH}`);
 }
 const hasShrinkwrap = entrySet.has("npm-shrinkwrap.json");
-if (hasShrinkwrap) {
+const declaresShrinkwrap =
+  Array.isArray(packageJson?.files) &&
+  packageJson.files.some((entry) => normalizePackageFilesEntry(entry) === "npm-shrinkwrap.json");
+if (hasShrinkwrap && !declaresShrinkwrap) {
+  errors.push("package tarball must not contain npm-shrinkwrap.json");
+}
+if (hasShrinkwrap && declaresShrinkwrap) {
   try {
     const shrinkwrap = JSON.parse(readTarEntry("npm-shrinkwrap.json")) as ShrinkwrapManifest;
     const rootPackage = shrinkwrap.packages?.[""];
