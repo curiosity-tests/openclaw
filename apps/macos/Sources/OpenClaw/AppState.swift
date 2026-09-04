@@ -133,14 +133,6 @@ final class AppState {
         }
     }
 
-    var nativeSettingsPanesEnabled: Bool {
-        didSet {
-            self.ifNotPreview {
-                AppDefaults.standard.set(self.nativeSettingsPanesEnabled, forKey: nativeSettingsPanesEnabledKey)
-            }
-        }
-    }
-
     var swabbleEnabled: Bool {
         didSet {
             self.ifNotPreview {
@@ -274,7 +266,7 @@ final class AppState {
     var seamColorHex: String?
 
     /// Caller's per-profile accent (users.prefs.get). Kept separate from
-    /// seamColorHex so settings-pane config refreshes cannot clobber it.
+    /// seamColorHex so Gateway config refreshes cannot clobber it.
     var profileAccentHex: String?
 
     /// Accent the UI renders: the profile accent wins over the gateway seam color.
@@ -486,7 +478,6 @@ final class AppState {
         self.launchAtLogin = false
         self.onboardingSeen = onboardingSeen
         self.debugPaneEnabled = AppDefaults.standard.bool(forKey: debugPaneEnabledKey)
-        self.nativeSettingsPanesEnabled = AppDefaults.standard.bool(forKey: nativeSettingsPanesEnabledKey)
         let savedVoiceWake = AppDefaults.standard.bool(forKey: swabbleEnabledKey)
         self.swabbleEnabled = voiceWakeSupported ? savedVoiceWake : false
         self.swabbleTriggerWords = AppDefaults.standard

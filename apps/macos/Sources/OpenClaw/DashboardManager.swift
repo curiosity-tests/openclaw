@@ -491,7 +491,7 @@ final class DashboardManager {
         controller.showFailure(
             title: "Dashboard unavailable",
             message: message,
-            detail: "Check Settings → Connection or use Debug → Reset Remote Tunnel, then try again.")
+            detail: "Open Connection or use Debug → Reset Remote Tunnel, then try again.")
     }
 
     func close() {
@@ -1380,7 +1380,7 @@ extension DashboardManager {
             guard self.target(for: source) == target else { return }
             self.presentSetPrimaryConfirmation(target, source: source)
         case .openSettings:
-            AppNavigationActions.openSettings(tab: .gateways)
+            AppNavigationActions.openConnection(tab: .gateways)
         }
     }
 
@@ -1400,7 +1400,7 @@ extension DashboardManager {
                 alert.runModal()
             },
             openConnectionSettings: {
-                AppNavigationActions.openSettings(tab: .connection)
+                AppNavigationActions.openConnection()
             })
         coordinator.handle(link)
     }

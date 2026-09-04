@@ -713,31 +713,6 @@ struct OnboardingSystemAgentChatTests {
         #expect(receivedDraft?.composerValue == "Wake up, my friend!")
     }
 
-    @Test func `settings callback refreshes inference after assistant reply`() async throws {
-        let session = GatewayTestWebSocketSession(taskFactory: {
-            GatewayTestWebSocketTask(sendHook: { task, message, sendIndex in
-                guard sendIndex > 0,
-                      let id = GatewayWebSocketTestSupport.requestID(from: message)
-                else { return }
-                task.emitReceiveSuccess(.data(systemAgentResponse(id: id)))
-            })
-        })
-        let url = try #require(URL(string: "ws://example.invalid"))
-        let gateway = GatewayConnection(
-            configProvider: { (url: url, token: nil, password: nil) },
-            sessionBox: WebSocketSessionBox(session: session))
-        let chat = SystemAgentOnboardingChatModel(gateway: gateway)
-        var refreshCount = 0
-        SystemAgentSettings.configureChatCallbacks(
-            for: chat,
-            onReplyReceived: { refreshCount += 1 })
-
-        await chat.startIfNeeded()
-
-        #expect(chat.messages.map(\.text) == ["ready"])
-        #expect(refreshCount == 1)
-    }
-
     @Test func `model invalidation cancels queued send and restart tasks`() async throws {
         let session = GatewayTestWebSocketSession()
         let url = try #require(URL(string: "ws://example.invalid"))

@@ -10,14 +10,6 @@ typealias ExecApprovalsSocketConfig = ExecApprovalsSocketDocument
 typealias ExecApprovalsFile = ExecApprovalsDocument
 
 extension ExecApprovalsSecurity {
-    var title: String {
-        switch self {
-        case .deny: "Deny"
-        case .allowlist: "Allowlist"
-        case .full: "Always Allow"
-        }
-    }
-
     static func narrower(_ lhs: ExecSecurity, _ rhs: ExecSecurity) -> ExecSecurity {
         if lhs == .deny || rhs == .deny {
             return .deny
@@ -30,14 +22,6 @@ extension ExecApprovalsSecurity {
 }
 
 extension ExecApprovalsAsk {
-    var title: String {
-        switch self {
-        case .off: "Never Ask"
-        case .onMiss: "Ask on Allowlist Miss"
-        case .always: "Always Ask"
-        }
-    }
-
     static func stricter(_ lhs: ExecAsk, _ rhs: ExecAsk) -> ExecAsk {
         lhs.strictnessRank >= rhs.strictnessRank ? lhs : rhs
     }
@@ -114,15 +98,12 @@ enum ExecApprovalsConditionalSaveResult {
 
 enum ExecApprovalsMutationError: Error, Equatable, Sendable {
     case invalidPattern(ExecAllowlistPatternValidationReason)
-    case entryNotOwned
     case unavailable
 
     var message: String {
         switch self {
         case let .invalidPattern(reason):
             reason.message
-        case .entryNotOwned:
-            "This allowlist entry is inherited. Edit its owning scope and retry."
         case .unavailable:
             "Could not save exec approvals. Last known settings are shown; retry the change."
         }
@@ -166,20 +147,6 @@ enum ExecApprovalHelpers {
         let trimmed = pattern?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !trimmed.isEmpty else { return .invalid(.empty) }
         return .valid(trimmed)
-    }
-
-    static func isValidAllowlistPattern(_ pattern: String?) -> Bool {
-        switch self.validateAllowlistPattern(pattern) {
-        case .valid:
-            true
-        case .invalid:
-            false
-        }
-    }
-
-    static func isPathPattern(_ pattern: String?) -> Bool {
-        let trimmed = pattern?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return self.patternHasPathSelector(trimmed)
     }
 
     static func parseDecision(_ raw: String?) -> ExecApprovalDecision? {
@@ -257,7 +224,8 @@ actor SkillBinsCache {
         }
         let revision = self.gateway.selectedEndpointRevision
         if let source = try? await self.gateway.acquireServerLease(),
-           let report = try? await self.gateway.skillsStatus(on: source)
+           let report = try? await JSONDecoder().decode(SkillsStatusReport.self, from: self.gateway.request(
+               method: GatewayConnection.Method.skillsStatus.rawValue, params: nil, ifCurrentServerLease: source))
         {
             guard !Task.isCancelled else { return nil }
             if revision == self.gateway.selectedEndpointRevision,

@@ -11,6 +11,11 @@ title: "macOS permissions"
 
 macOS permission grants are fragile. TCC associates a permission grant with the app's code signature, bundle identifier, and on-disk path. If any of those change, macOS treats the app as new and may drop or hide prompts.
 
+Open **Dashboard → Settings → This Mac → Permissions** in the macOS app to
+check each permission, request access, or open its macOS System Settings pane.
+The page also controls location access and precision. Permission status refreshes
+when you return to the app after changing a grant in System Settings.
+
 ## Requirements for stable permissions
 
 - Same path: run a release app from `/Applications/OpenClaw.app`; keep development builds at one fixed path such as `dist/OpenClaw.app`.
@@ -26,7 +31,7 @@ If Quick Chat still shows **Needs additional permissions: Screen Recording**:
 
 1. Click **Grant** in OpenClaw.
 2. If macOS opens System Settings, enable the running OpenClaw app under **Privacy & Security -> Screen & System Audio Recording** (called **Screen Recording** on older macOS versions).
-3. Return to OpenClaw and retry the screenshot. You can also recheck access with **Settings -> Permissions -> Refresh**.
+3. Return to OpenClaw and retry the screenshot. **Dashboard → Settings → This Mac → Permissions** shows the refreshed access status.
 
 After an explicit **Grant** request, OpenClaw checks ScreenCaptureKit as well as the macOS permission preflight. This lets it recognize access when the preflight still reports an old denial. Passive status checks do not initiate this probe before you request access.
 
@@ -40,7 +45,7 @@ macOS TCC grants Accessibility to the code identity of the process it sees. If a
 
 Treat a `node` entry in System Settings as broad permission for that Node runtime, not as permission for one npm package. Avoid granting Accessibility to `node` unless you trust every script and package launched through that exact Node install.
 
-Accessibility approval does not enable activity sharing. **Settings -> Permissions -> Active computer detection** is a separate, off-by-default control for sharing bounded idle duration with your Gateway. Turning it off clears retained activity without revoking Accessibility or disconnecting the node.
+Accessibility approval does not enable activity sharing. **Dashboard → Settings → This Mac → Permissions → Active computer presence** is a separate, off-by-default control for sharing bounded idle duration with your Gateway. Turning it off clears retained activity without revoking Accessibility or disconnecting the node.
 
 If you accidentally granted Accessibility to `node`, remove that entry from System Settings -> Privacy & Security -> Accessibility. Then grant the signed app or helper that should own UI automation.
 

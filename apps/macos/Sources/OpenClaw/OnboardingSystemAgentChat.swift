@@ -49,25 +49,14 @@ final class SystemAgentOnboardingChatModel {
     /// Called after every assistant reply (setup may have applied config).
     var onReplyReceived: (() -> Void)?
 
-    private var sessionId: String
-    private let sessionPrefix: String
+    private var sessionId = "mac-onboarding-\(UUID().uuidString)"
     private let gateway: GatewayConnection
-    /// "onboarding" seeds the first-run setup proposal; nil gets the
-    /// status/repair greeting (used by Settings → OpenClaw).
-    private let welcomeVariant: String?
     private var started = false
     private var requestGeneration: UInt64? = 0
     private var requestTask: Task<Void, Never>?
     private var route: GatewayConnection.Route?
 
-    init(
-        welcomeVariant: String? = "onboarding",
-        sessionPrefix: String = "mac-onboarding",
-        gateway: GatewayConnection = .shared)
-    {
-        self.welcomeVariant = welcomeVariant
-        self.sessionPrefix = sessionPrefix
-        self.sessionId = "\(sessionPrefix)-\(UUID().uuidString)"
+    init(gateway: GatewayConnection = .shared) {
         self.gateway = gateway
     }
 
@@ -138,7 +127,7 @@ final class SystemAgentOnboardingChatModel {
         let generation = previousGeneration &+ 1
         self.requestGeneration = generation
         self.requestTask?.cancel()
-        self.sessionId = "\(self.sessionPrefix)-\(UUID().uuidString)"
+        self.sessionId = "mac-onboarding-\(UUID().uuidString)"
         self.route = nil
         self.started = true
         self.messages.removeAll()
@@ -220,10 +209,8 @@ final class SystemAgentOnboardingChatModel {
         do {
             var params: [String: AnyCodable] = [
                 "sessionId": AnyCodable(self.sessionId),
+                "welcomeVariant": AnyCodable("onboarding"),
             ]
-            if let welcomeVariant = self.welcomeVariant {
-                params["welcomeVariant"] = AnyCodable(welcomeVariant)
-            }
             if let message {
                 params["message"] = AnyCodable(message)
             }

@@ -69,15 +69,19 @@ struct OpenClawApp: App {
     }
 
     var body: some Scene {
-        Window("OpenClaw Settings", id: SettingsWindowOpener.windowID) {
-            SettingsRootView(state: self.state, updater: self.delegate.updaterController)
+        // Register before any window is opened, including connection recovery from the dashboard.
+        let openWindow = self.openWindow
+        ConnectionWindowOpener.shared.register {
+            openWindow(id: ConnectionWindowOpener.windowID)
+        }
+        return Window("OpenClaw Connection", id: ConnectionWindowOpener.windowID) {
+            ConnectionWindow(state: self.state)
                 .environment(self.tailscaleService)
-                .background(SettingsWindowOpenRegistrar())
         }
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
         // Keep this a preferred size so the content can fit smaller displays.
-        .defaultSize(width: SettingsTab.windowWidth, height: SettingsTab.windowHeight)
+        .defaultSize(width: ConnectionWindow.width, height: ConnectionWindow.height)
         .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .newItem) {
@@ -92,10 +96,19 @@ struct OpenClawApp: App {
                 .keyboardShortcut("n", modifiers: [.command, .shift])
             }
             CommandGroup(replacing: .appSettings) {
-                Button("Settings...") {
-                    self.openWindow(id: SettingsWindowOpener.windowID)
+                Button("Settings…") {
+                    AppNavigationActions.openSettings()
                 }
                 .keyboardShortcut(",", modifiers: .command)
+
+                Button("Connection…") {
+                    AppNavigationActions.openConnection()
+                }
+            }
+            CommandGroup(replacing: .appInfo) {
+                Button("About OpenClaw") {
+                    AppNavigationActions.openAbout()
+                }
             }
             DashboardGatewayCommands(dashboardManager: DashboardManager.shared)
             SidebarCommands()
@@ -127,21 +140,6 @@ struct OpenClawApp: App {
             return
         }
         self.logger.info("attach-only flag enabled")
-    }
-}
-
-struct SettingsWindowOpenRegistrar: View {
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        Color.clear
-            .frame(width: 0, height: 0)
-            .onAppear {
-                let openWindow = self.openWindow
-                SettingsWindowOpener.shared.register {
-                    openWindow(id: SettingsWindowOpener.windowID)
-                }
-            }
     }
 }
 

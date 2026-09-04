@@ -28,6 +28,7 @@ struct StatusMenuDescriptorTests {
             "summary.usage",
             "summary.devices",
             "action.settings",
+            "action.connection",
             "action.debug",
             "action.about",
             "update.ready",
