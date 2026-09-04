@@ -42,7 +42,7 @@ extension DashboardWindowController {
             _ = await PermissionManager.ensure([id.capability], interactive: true)
             await PermissionMonitor.shared.refreshNow()
         case let .openSystemSettings(id):
-            SystemSettingsURLSupport.openPrivacySettings(for: id.capability)
+            SystemSettingsURLSupport.openFirst(SystemSettingsURLSupport.settingsCandidates(for: id.capability))
         case let .open(panel):
             await self.openDeviceSettingsPanel(panel)
         case .checkForUpdates:

@@ -4,6 +4,16 @@ import OpenClawIPC
 
 enum SystemSettingsURLSupport {
     static func privacySettingsCandidates(for capability: Capability) -> [String] {
+        // These permissions recover here; the others own their prompt/recovery flow.
+        switch capability {
+        case .microphone, .speechRecognition, .camera, .location:
+            self.settingsCandidates(for: capability)
+        default:
+            []
+        }
+    }
+
+    static func settingsCandidates(for capability: Capability) -> [String] {
         if capability == .notifications {
             return [
                 "x-apple.systempreferences:com.apple.Notifications-Settings.extension",

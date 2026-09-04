@@ -104,10 +104,7 @@ enum PermissionManager {
             return granted && self.isNotificationAuthorized(status: updated.authorizationStatus)
         }
         if settings.authorizationStatus == .denied, interactive {
-            SystemSettingsURLSupport.openFirst([
-                "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
-                "x-apple.systempreferences:com.apple.preference.notifications",
-            ])
+            SystemSettingsURLSupport.openFirst(SystemSettingsURLSupport.settingsCandidates(for: .notifications))
         }
         return false
     }
