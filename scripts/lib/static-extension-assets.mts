@@ -39,7 +39,13 @@ function normalizePackageRelativePath(value: unknown) {
   const normalized = toPosixPath(value)
     .trim()
     .replace(/^\.\/+/u, "");
-  if (!normalized || normalized.startsWith("../") || normalized.includes("/../")) {
+  if (
+    !normalized ||
+    path.posix.isAbsolute(normalized) ||
+    path.win32.isAbsolute(normalized) ||
+    normalized.startsWith("../") ||
+    normalized.includes("/../")
+  ) {
     return "";
   }
   return normalized;

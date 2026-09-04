@@ -677,6 +677,69 @@ describe("check-openclaw-package-tarball", () => {
     });
   });
 
+  it.each([".npmrc", "config/.npmrc", ".git/config", "yarn.lock", "pnpm-lock.yaml", "bun.lockb"])(
+    "rejects npm-forced excluded tar entry %s",
+    (relativePath) => {
+      checkTarball({
+        files: {
+          "dist/index.js": "export {};\n",
+          [relativePath]: "fixture\n",
+        },
+        options: {
+          filesOnlyArchive: true,
+          packageJson: { files: ["dist", relativePath] },
+        },
+        status: "nonzero",
+        stderr: [`npm pack forcibly excludes tar entry ${relativePath}`],
+      });
+    },
+  );
+
+  it.each(["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb"])(
+    "rejects npm-forced excluded bundled package entry %s",
+    (relativePath) => {
+      const packagePath = `node_modules/example/${relativePath}`;
+      checkTarball({
+        files: {
+          "dist/index.js": "export {};\n",
+          "node_modules/example/package.json": '{"name":"example","version":"1.0.0"}\n',
+          [packagePath]: "fixture\n",
+        },
+        options: {
+          packageJson: {
+            files: ["dist"],
+            dependencies: { example: "1.0.0" },
+            bundleDependencies: ["example"],
+          },
+        },
+        status: "nonzero",
+        stderr: [`npm pack forcibly excludes tar entry ${packagePath}`],
+      });
+    },
+  );
+
+  it("rejects npm-forced lockfiles at hoisted transitive package roots", () => {
+    const packagePath = "node_modules/transitive/package-lock.json";
+    checkTarball({
+      files: {
+        "dist/index.js": "export {};\n",
+        "node_modules/example/package.json":
+          '{"name":"example","version":"1.0.0","dependencies":{"transitive":"1.0.0"}}\n',
+        "node_modules/transitive/package.json": '{"name":"transitive","version":"1.0.0"}\n',
+        [packagePath]: "{}\n",
+      },
+      options: {
+        packageJson: {
+          files: ["dist"],
+          dependencies: { example: "1.0.0" },
+          bundleDependencies: ["example"],
+        },
+      },
+      status: "nonzero",
+      stderr: [`npm pack forcibly excludes tar entry ${packagePath}`],
+    });
+  });
+
   it("rejects private package cargo independently of package metadata", () => {
     const privatePath = "qa/scenarios/index.yaml";
     checkTarball({
@@ -732,7 +795,12 @@ describe("check-openclaw-package-tarball", () => {
     });
   });
 
-  it("fails closed for invalid packaged extension asset outputs", () => {
+  it.each([
+    "../assets/runtime.js",
+    "/assets/runtime.js",
+    "C:\\assets\\runtime.js",
+    "\\\\server\\share\\runtime.js",
+  ])("fails closed for invalid packaged extension asset output %s", (output) => {
     const extensionManifest = "dist/extensions/example/package.json";
     checkTarball({
       inventory: ["dist/index.js", extensionManifest],
@@ -745,7 +813,7 @@ describe("check-openclaw-package-tarball", () => {
               staticAssets: [
                 {
                   source: "./assets/runtime.js",
-                  output: "../assets/runtime.js",
+                  output,
                 },
               ],
             },
@@ -1008,7 +1076,107 @@ describe("check-openclaw-package-tarball", () => {
     });
   });
 
+  it.each(["./npm-shrinkwrap.json", "NPM-SHRINKWRAP.JSON"])(
+    "accepts normalized shrinkwrap declaration %s",
+    (filesEntry) => {
+      checkTarball({
+        version: "2026.7.33",
+        options: {
+          includeShrinkwrap: true,
+          packageJson: { files: ["dist", filesEntry] },
+        },
+        status: 0,
+        successText: true,
+      });
+    },
+  );
+
   const bundledRuntimeCases: NamedTarballCheck[] = [
+    {
+      name: "accepts npm-packlist-owned bundled dependency paths outside root files rules",
+      files: {
+        "dist/index.js": "export {};\n",
+        "node_modules/example/package.json": '{"name":"example","version":"1.0.0"}\n',
+      },
+      options: {
+        packageJson: {
+          files: ["dist"],
+          dependencies: { example: "1.0.0" },
+          bundleDependencies: ["example"],
+        },
+      },
+      status: 0,
+      successText: true,
+    },
+    {
+      name: "accepts npm-packlist-owned hoisted transitive dependency paths",
+      files: {
+        "dist/index.js": "export {};\n",
+        "node_modules/example/package.json":
+          '{"name":"example","version":"1.0.0","dependencies":{"transitive":"1.0.0"}}\n',
+        "node_modules/transitive/package.json": '{"name":"transitive","version":"1.0.0"}\n',
+      },
+      options: {
+        packageJson: {
+          files: ["dist"],
+          dependencies: { example: "1.0.0" },
+          bundleDependencies: ["example"],
+        },
+      },
+      status: 0,
+      successText: true,
+    },
+    {
+      name: "rejects undeclared node_modules paths outside root files rules",
+      files: {
+        "dist/index.js": "export {};\n",
+        "node_modules/example/package.json": '{"name":"example","version":"1.0.0"}\n',
+      },
+      options: {
+        packageJson: {
+          files: ["dist"],
+          dependencies: { example: "1.0.0" },
+        },
+      },
+      status: "nonzero",
+      stderr: ["root package excludes tar entry node_modules/example/package.json"],
+    },
+    {
+      name: "rejects undeclared packages nested inside a bundled dependency",
+      files: {
+        "dist/index.js": "export {};\n",
+        "node_modules/example/package.json": '{"name":"example","version":"1.0.0"}\n',
+        "node_modules/example/node_modules/extra/package.json":
+          '{"name":"extra","version":"1.0.0"}\n',
+      },
+      options: {
+        packageJson: {
+          files: ["dist"],
+          dependencies: { example: "1.0.0" },
+          bundleDependencies: ["example"],
+        },
+      },
+      status: "nonzero",
+      stderr: [
+        "root package excludes tar entry node_modules/example/node_modules/extra/package.json",
+      ],
+    },
+    {
+      name: "rejects optional-only roots under boolean bundleDependencies",
+      files: {
+        "dist/index.js": "export {};\n",
+        "node_modules/optional/package.json": '{"name":"optional","version":"1.0.0"}\n',
+      },
+      options: {
+        packageJson: {
+          files: ["dist"],
+          optionalDependencies: { optional: "1.0.0" },
+          bundleDependencies: true,
+        },
+      },
+      status: "nonzero",
+      stderr: ["root package excludes tar entry node_modules/optional/package.json"],
+    },
     {
       name: "accepts separately published private workspace dependencies by default",
       version: "2026.6.11",

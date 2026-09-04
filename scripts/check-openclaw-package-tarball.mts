@@ -38,6 +38,12 @@ type Calver = { day: number; month: number; year: number };
 // npm-packlist strict rules force these root files into every package after files rules.
 const NPM_REQUIRED_ROOT_FILE =
   /^(?:package\.json|(?:readme|copying|licen[cs]e)(?:\.[^/]*[^~$])?)$/iu;
+const NPM_FORCED_EXCLUDED_ROOT_FILES = new Set([
+  "package-lock.json",
+  "yarn.lock",
+  "pnpm-lock.yaml",
+  "bun.lockb",
+]);
 
 type ShrinkwrapPackage = {
   dev?: unknown;
@@ -175,6 +181,74 @@ function listBundleDependencies(packageJson: unknown): string[] {
   return Array.isArray(bundleDependencies)
     ? bundleDependencies.filter((name): name is string => typeof name === "string")
     : [];
+}
+
+function isPackageName(value: string): boolean {
+  const segments = value.split("/");
+  return (
+    !value.includes("\\") &&
+    (value.startsWith("@") ? segments.length === 2 : segments.length === 1) &&
+    segments.every((segment) => segment !== "" && segment !== "." && segment !== "..")
+  );
+}
+
+function resolveBundledDependencyRoot(
+  ownerRoot: string,
+  name: string,
+  entries: ReadonlySet<string>,
+): string {
+  if (!isPackageName(name)) {
+    return "";
+  }
+  let searchRoot = ownerRoot;
+  while (true) {
+    const candidate = searchRoot ? `${searchRoot}/node_modules/${name}` : `node_modules/${name}`;
+    if (entries.has(`${candidate}/package.json`)) {
+      return candidate;
+    }
+    if (!searchRoot) {
+      return "";
+    }
+    const nodeModulesIndex = searchRoot.lastIndexOf("node_modules/");
+    searchRoot = searchRoot.slice(0, nodeModulesIndex).replace(/\/+$/u, "");
+  }
+}
+
+function collectBundledDependencyRoots(
+  packageJson: PackageManifest,
+  entries: ReadonlySet<string>,
+  packageRoot: string,
+): Set<string> {
+  const roots = new Set<string>();
+  const pending = listBundleDependencies(packageJson).map((name) => ({ name, ownerRoot: "" }));
+  for (const dependency of pending) {
+    const root = resolveBundledDependencyRoot(dependency.ownerRoot, dependency.name, entries);
+    if (!root || roots.has(root)) {
+      continue;
+    }
+    roots.add(root);
+    let manifest: unknown;
+    try {
+      manifest = JSON.parse(fs.readFileSync(path.join(packageRoot, root, "package.json"), "utf8"));
+    } catch {
+      continue;
+    }
+    if (!isRecord(manifest)) {
+      continue;
+    }
+    // npm-packlist recursively gathers every bundled package's production and
+    // optional dependency closure, resolving nested or hoisted install roots.
+    for (const section of ["dependencies", "optionalDependencies"]) {
+      const dependencies = manifest[section];
+      if (!isRecord(dependencies)) {
+        continue;
+      }
+      for (const name of Object.keys(dependencies)) {
+        pending.push({ name, ownerRoot: root });
+      }
+    }
+  }
+  return roots;
 }
 
 function resolveBundledPackageSpecifiers(
@@ -332,6 +406,7 @@ function collectPackageFilesExclusionErrors(
   packageJson: PackageManifest,
   entries: ReadonlySet<string>,
   packageRoot: string,
+  bundledPackageRoots: ReadonlySet<string>,
 ): string[] {
   if (!Array.isArray(packageJson.files)) {
     return [];
@@ -378,6 +453,23 @@ function collectPackageFilesExclusionErrors(
         nocase: true,
       }),
   );
+  const isBundledDependencyEntry = (entry: string): boolean => {
+    const normalized = entry.replace(/\/+$/u, "");
+    // npm-packlist gathers declared bundles after root files rules, including
+    // their ancestor directories. Only exempt that declared dependency tree.
+    for (const root of bundledPackageRoots) {
+      if (normalized === root || root.startsWith(`${normalized}/`)) {
+        return true;
+      }
+      if (normalized.startsWith(`${root}/`)) {
+        const packageRelative = normalized.slice(root.length + 1);
+        if (!packageRelative.startsWith("node_modules/")) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
 
   const isIncluded = (entry: string): boolean => {
     const directoryEntry = entry.endsWith("/");
@@ -410,8 +502,46 @@ function collectPackageFilesExclusionErrors(
   return [...entries]
     .filter(Boolean)
     .filter((entry) => !NPM_REQUIRED_ROOT_FILE.test(entry))
+    .filter((entry) => !isBundledDependencyEntry(entry))
     .filter((entry) => !isIncluded(entry))
     .map((entry) => `root package excludes tar entry ${entry}`);
+}
+
+function normalizePackageFilesEntry(value: unknown): string {
+  return typeof value === "string"
+    ? value
+        .replaceAll("\\", "/")
+        .trim()
+        .replace(/^\.?\/+/u, "")
+        .toLowerCase()
+    : "";
+}
+
+function collectNpmForcedExclusionErrors(
+  entries: Iterable<string>,
+  bundledPackageRoots: ReadonlySet<string>,
+): string[] {
+  const errors: string[] = [];
+  const normalizedBundledPackageRoots = new Set(
+    [...bundledPackageRoots].map((root) => root.toLowerCase()),
+  );
+  for (const entry of entries) {
+    const normalized = entry.replace(/\/+$/u, "").toLowerCase();
+    const segments = new Set(normalized.split("/").filter(Boolean));
+    const fileName = path.posix.basename(normalized);
+    const packageRoot = path.posix.dirname(normalized);
+    if (normalized === "package-lock.json") {
+      errors.push("package tarball must not contain package-lock.json");
+    } else if (
+      (NPM_FORCED_EXCLUDED_ROOT_FILES.has(fileName) &&
+        (packageRoot === "." || normalizedBundledPackageRoots.has(packageRoot))) ||
+      segments.has(".git") ||
+      segments.has(".npmrc")
+    ) {
+      errors.push(`npm pack forcibly excludes tar entry ${entry}`);
+    }
+  }
+  return errors;
 }
 
 function collectLocalPackageExportTargets(
@@ -657,6 +787,7 @@ for (const requiredPrefix of REQUIRED_TARBALL_ENTRY_PREFIXES) {
 }
 let packageVersion = "";
 let packageJson: PackageManifest | null = null;
+let bundledPackageRoots = new Set<string>();
 if (entrySet.has("package.json")) {
   try {
     packageJson = JSON.parse(readTarEntry("package.json")) as PackageManifest;
@@ -678,7 +809,15 @@ if (entrySet.has("package.json")) {
   }
 }
 if (packageJson) {
-  errors.push(...collectPackageFilesExclusionErrors(packageJson, entrySet, extractedPackageRoot));
+  bundledPackageRoots = collectBundledDependencyRoots(packageJson, entrySet, extractedPackageRoot);
+  errors.push(
+    ...collectPackageFilesExclusionErrors(
+      packageJson,
+      entrySet,
+      extractedPackageRoot,
+      bundledPackageRoots,
+    ),
+  );
   errors.push(...collectPackageExportErrors(packageJson, entrySet));
   try {
     for (const assetPath of listPackagedStaticExtensionAssetOutputs({
@@ -706,12 +845,11 @@ const requiresCodeModeWorker =
 if (requiresCodeModeWorker && !entrySet.has(CODE_MODE_WORKER_PATH)) {
   errors.push(`missing required tar entry ${CODE_MODE_WORKER_PATH}`);
 }
-if (entrySet.has("package-lock.json")) {
-  errors.push("package tarball must not contain package-lock.json");
-}
+errors.push(...collectNpmForcedExclusionErrors(entrySet, bundledPackageRoots));
 const hasShrinkwrap = entrySet.has("npm-shrinkwrap.json");
 const declaresShrinkwrap =
-  Array.isArray(packageJson?.files) && packageJson.files.includes("npm-shrinkwrap.json");
+  Array.isArray(packageJson?.files) &&
+  packageJson.files.some((entry) => normalizePackageFilesEntry(entry) === "npm-shrinkwrap.json");
 if (hasShrinkwrap && !declaresShrinkwrap) {
   errors.push("package tarball must not contain npm-shrinkwrap.json");
 }
