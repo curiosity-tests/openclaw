@@ -62,6 +62,10 @@ cookie sync, and permissions. Device voice controls appear under
 **Settings → Updates → This Mac**. These device controls appear only in the
 macOS app's embedded Dashboard, not in an ordinary browser.
 
+Enabling sensitive capabilities opens a native confirmation with **Cancel** as
+the default. Closing or replacing the Dashboard page cancels pending consent;
+request the change again from the current page.
+
 ## Connection
 
 Choose **Connection…** to open the small native window even when the Gateway
@@ -81,9 +85,6 @@ Open **Dashboard → Settings → Updates → This Mac** to turn automatic app u
 on or off, choose **Check for Updates…**, and see the installed app version and
 build. The page explains when updates are unavailable, including while a named
 app profile is active.
-
-App-local settings (permissions, Quick Chat, voice, updates) live in
-Dashboard → Settings → This Mac and require a Gateway release that includes those pages.
 
 If the primary Gateway connection rejects the app's protocol version, the app
 shows an update alert and keeps the explanation in its connection status.

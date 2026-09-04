@@ -47,13 +47,18 @@ final class DashboardDeviceSettingsMessageHandler: NSObject, WKScriptMessageHand
             NotificationCenter.default.removeObserver(observer)
         }
         self.observers.removeAll()
+        self.cancelRequests()
+        self.refreshTask?.cancel()
+        self.refreshTask = nil
+        self.microphoneObserver.stop()
+    }
+
+    func cancelRequests() {
+        // Consent and queued changes belong to the displayed document, not its reusable window.
+        self.requests.cancel()
         if let alert = self.consentAlert, let parent = alert.window.sheetParent {
             parent.endSheet(alert.window, returnCode: .cancel)
         }
-        self.refreshTask?.cancel()
-        self.refreshTask = nil
-        self.requests.cancel()
-        self.microphoneObserver.stop()
     }
 
     isolated deinit {

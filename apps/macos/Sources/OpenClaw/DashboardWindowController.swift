@@ -432,13 +432,15 @@ final class DashboardWindowController: NSWindowController, WKNavigationDelegate,
     }
 
     func closeDashboard() {
-        window?.performClose(nil)
+        // Manager teardown must close even while a modal sheet disables the close button.
+        self.window?.close()
     }
 
     func detachWindowForReplacement() -> NSWindow? {
         guard let window else { return nil }
         // Route changes replace the privileged document, not its native shell;
         // detaching first transfers AppKit ownership without a close/focus cycle.
+        self.deviceSettingsMessageHandler.stopObserving()
         self.webView.stopLoading()
         self.closeLinkBrowser(focusDashboard: false)
         self.onClosed = nil
@@ -1542,6 +1544,7 @@ extension DashboardWindowController {
     func webView(_ webView: WKWebView, didCommit _: WKNavigation!) {
         guard webView === self.webView else { return }
         self.notificationSourceID = UUID().uuidString
+        self.deviceSettingsMessageHandler.cancelRequests()
         self.hasLiveContent = false
         self.nativeCommandsReady = false
         // Swipe-back/⌘[ can leave the failure page through WKWebView history
