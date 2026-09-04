@@ -21,6 +21,7 @@ export type NativeDeviceSettingsSnapshot = {
   };
   app: {
     showDockIcon: boolean;
+    iconStyle?: { selectedId: string; available: Array<{ id: string; name: string }> }; // advertised by hosts with Dock icon selection
     iconAnimationsEnabled: boolean;
     launchAtLogin: boolean;
     launchAtLoginAvailable: boolean; // false when SMAppService cannot be used (named profile, unbundled)
@@ -78,6 +79,7 @@ export type NativeDeviceSettingsSnapshot = {
 
 export type SettingKey =
   | "app.showDockIcon"
+  | "app.iconStyle"
   | "app.iconAnimationsEnabled"
   | "app.launchAtLogin"
   | "app.quickChatEnabled"
@@ -209,6 +211,10 @@ function isSnapshot(value: unknown): value is NativeDeviceSettingsSnapshot {
       "debugPaneEnabled",
     ].every((key) => typeof app[key] === "boolean") &&
     nullableString(app.quickChatShortcut) &&
+    (app.iconStyle === undefined ||
+      (isRecord(app.iconStyle) &&
+        typeof app.iconStyle.selectedId === "string" &&
+        namedDevices(app.iconStyle.available))) &&
     [
       "canvasEnabled",
       "cameraEnabled",

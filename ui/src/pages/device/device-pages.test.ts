@@ -107,6 +107,19 @@ describe("native device settings pages", () => {
       "https://docs.openclaw.ai/platforms/macos",
     );
     expect(row(page, "Quick Chat shortcut").textContent).toContain("Not set");
+    const iconStyles = row(page, "Dock icon").querySelector<HTMLSelectElement>("select")!;
+    expect(iconStyles.value).toBe("paper");
+    expect([...iconStyles.options].map((option) => option.textContent?.trim())).toEqual([
+      "Original",
+      "Heritage",
+      "Clawmark",
+      "Origami",
+      "Pincer",
+      "Open C",
+    ]);
+    iconStyles.value = "origami";
+    iconStyles.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(capability.set).toHaveBeenCalledWith("app.iconStyle", "origami");
     expect(row(page, "Launch at login").querySelector<ToggleElement>("wa-switch")!.disabled).toBe(
       true,
     );
@@ -136,6 +149,16 @@ describe("native device settings pages", () => {
     const native = createCapability();
     const page = await mount("openclaw-device-page", native.capability);
     const next = createNativeDeviceSettingsSnapshot();
+    next.app.iconStyle = {
+      selectedId: "origami",
+      available: [{ id: "origami", name: "Origami" }],
+    };
+    native.publish(next);
+    await page.updateComplete;
+    const iconStyles = row(page, "Dock icon").querySelector<HTMLSelectElement>("select")!;
+    expect(iconStyles.value).toBe("origami");
+    expect(iconStyles.options).toHaveLength(1);
+    delete next.app.iconStyle;
     next.app.quickChatShortcut = "⌘K";
     next.app.showDockIcon = false;
     next.capabilities.computerControlEnabled = false;
@@ -151,6 +174,7 @@ describe("native device settings pages", () => {
       row(page, "Enable Peekaboo Bridge").querySelector<ToggleElement>("wa-switch")!.disabled,
     ).toBe(true);
     expect(page.querySelector('[aria-label="Computer Control provider"]')).toBeNull();
+    expect(page.querySelector('[aria-label="Dock icon"]')).toBeNull();
     expect(page.textContent).not.toContain("Import browser logins…");
     expect(page.querySelector('[aria-label="Target profile"]')).toBeNull();
     expect(page.textContent).toContain("Cookie sync requires remote mode");

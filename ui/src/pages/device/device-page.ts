@@ -298,6 +298,34 @@ class DevicePage extends OpenClawLightDomElement {
         { title: t("configPage.deviceSettings.app") },
         html`
           ${this.toggle("app.showDockIcon", app.showDockIcon, "showDockIcon", t("configPage.deviceSettings.showDockIconHint"))}
+          ${
+            app.iconStyle
+              ? renderSettingsRow({
+                  title: t("configPage.deviceSettings.iconStyle"),
+                  description: t("configPage.deviceSettings.iconStyleHint"),
+                  control: html`<select
+                    class="settings-select"
+                    aria-label=${t("configPage.deviceSettings.iconStyle")}
+                    .value=${live(app.iconStyle.selectedId)}
+                    ?disabled=${app.iconStyle.available.length === 0}
+                    @change=${(event: Event) => {
+                      // SAFETY: This handler is bound directly to the Dock icon select.
+                      const value = (event.currentTarget as HTMLSelectElement).value;
+                      capability?.set("app.iconStyle", value);
+                    }}
+                  >
+                    ${app.iconStyle.available.map(
+                      (style) => html`<option
+                        value=${style.id}
+                        ?selected=${style.id === app.iconStyle?.selectedId}
+                      >
+                        ${style.name}
+                      </option>`,
+                    )}
+                  </select>`,
+                })
+              : nothing
+          }
           ${this.toggle("app.iconAnimationsEnabled", app.iconAnimationsEnabled, "iconAnimations", t("configPage.deviceSettings.iconAnimationsHint"))}
           ${this.toggle("app.launchAtLogin", app.launchAtLogin, "launchAtLogin", app.launchAtLoginAvailable ? undefined : t("configPage.deviceSettings.launchAtLoginUnavailable"), !app.launchAtLoginAvailable)}
           ${this.toggle("app.quickChatEnabled", app.quickChatEnabled, "quickChat", t("configPage.deviceSettings.quickChatHint"))}

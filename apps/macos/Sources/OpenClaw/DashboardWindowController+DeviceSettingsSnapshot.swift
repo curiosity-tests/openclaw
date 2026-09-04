@@ -30,6 +30,8 @@ extension DashboardWindowController {
     {
         let state = AppStateStore.shared
         let defaults = AppDefaults.standard
+        let iconStyle = defaults.string(forKey: appIconStyleKey)
+            .flatMap(AppIconStyle.init(rawValue:)) ?? .paper
         let locationMode = defaults.string(forKey: locationModeKey)
             .flatMap(OpenClawLocationMode.init(rawValue:)) ?? .off
         let updaterAvailable = self.updater?.isAvailable == true
@@ -40,6 +42,10 @@ extension DashboardWindowController {
                 profileName: AppProfile.current.name),
             app: .init(
                 showDockIcon: state.showDockIcon,
+                iconStyle: .init(
+                    selectedId: iconStyle.rawValue,
+                    available: AppIconStyle.allCases.filter { AppIconArtwork.isAvailable($0) }
+                        .map { .init(id: $0.rawValue, name: $0.title) }),
                 iconAnimationsEnabled: state.iconAnimationsEnabled,
                 launchAtLogin: state.launchAtLogin,
                 // A moved app can still remove its existing login item; enabling keeps its separate gate.

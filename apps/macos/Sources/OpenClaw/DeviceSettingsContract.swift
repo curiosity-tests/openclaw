@@ -12,6 +12,7 @@ enum DeviceSettingValue: Equatable {
 
 enum DeviceSettingKey: String, CaseIterable {
     case showDockIcon = "app.showDockIcon"
+    case iconStyle = "app.iconStyle"
     case iconAnimationsEnabled = "app.iconAnimationsEnabled"
     case launchAtLogin = "app.launchAtLogin"
     case quickChatEnabled = "app.quickChatEnabled"
@@ -41,13 +42,14 @@ enum DeviceSettingKey: String, CaseIterable {
     case automaticUpdates = "updates.automatic"
 
     enum ValueType {
-        case boolean, string, strings, nullableString, provider, location
+        case boolean, string, strings, nullableString, provider, location, iconStyle
     }
 
     var valueType: ValueType {
         switch self {
         case .computerControlProvider: .provider
         case .locationMode: .location
+        case .iconStyle: .iconStyle
         case .cookieSyncTargetProfile, .localePrimary: .string
         case .cookieSyncDomains, .localeAdditional: .strings
         case .microphone: .nullableString
@@ -66,10 +68,11 @@ enum DeviceSettingKey: String, CaseIterable {
             return .strings(values)
         case .nullableString where raw is NSNull:
             return .null
-        case .string, .nullableString, .provider, .location:
+        case .string, .nullableString, .provider, .location, .iconStyle:
             guard let value = raw as? String else { return nil }
             if self.valueType == .provider, ComputerControlProvider(rawValue: value) == nil { return nil }
             if self.valueType == .location, DeviceSettingsLocationMode(rawValue: value) == nil { return nil }
+            if self.valueType == .iconStyle, AppIconStyle(rawValue: value) == nil { return nil }
             return .string(value)
         }
     }
@@ -191,7 +194,18 @@ struct DeviceSettingsSnapshot: Encodable {
     }
 
     struct App: Encodable {
+        struct IconStyle: Encodable {
+            struct Option: Encodable {
+                let id: String
+                let name: String
+            }
+
+            let selectedId: String
+            let available: [Option]
+        }
+
         let showDockIcon: Bool
+        let iconStyle: IconStyle
         let iconAnimationsEnabled: Bool
         let launchAtLogin: Bool
         let launchAtLoginAvailable: Bool
@@ -200,13 +214,14 @@ struct DeviceSettingsSnapshot: Encodable {
         let debugPaneEnabled: Bool
 
         enum CodingKeys: CodingKey {
-            case showDockIcon, iconAnimationsEnabled, launchAtLogin, launchAtLoginAvailable
+            case showDockIcon, iconStyle, iconAnimationsEnabled, launchAtLogin, launchAtLoginAvailable
             case quickChatEnabled, quickChatShortcut, debugPaneEnabled
         }
 
         func encode(to encoder: Encoder) throws {
             var values = encoder.container(keyedBy: CodingKeys.self)
             try values.encode(self.showDockIcon, forKey: .showDockIcon)
+            try values.encode(self.iconStyle, forKey: .iconStyle)
             try values.encode(self.iconAnimationsEnabled, forKey: .iconAnimationsEnabled)
             try values.encode(self.launchAtLogin, forKey: .launchAtLogin)
             try values.encode(self.launchAtLoginAvailable, forKey: .launchAtLoginAvailable)

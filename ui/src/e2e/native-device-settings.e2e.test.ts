@@ -68,6 +68,19 @@ suite.define(() => {
           page.evaluate(() => (window as DeviceSettingsTestWindow).nativeDeviceSettingsMessages);
         await expect.poll(messages).toContainEqual({ type: "status" });
 
+        const iconStyle = devicePage.getByRole("combobox", { name: "Dock icon", exact: true });
+        await expect.poll(() => iconStyle.inputValue()).toBe("paper");
+        expect(await iconStyle.locator("option").allTextContents()).toEqual(
+          ["Original", "Heritage", "Clawmark", "Origami", "Pincer", "Open C"].map((name) =>
+            expect.stringContaining(name),
+          ),
+        );
+        await iconStyle.selectOption("origami");
+        await expect
+          .poll(messages)
+          .toContainEqual({ type: "set", key: "app.iconStyle", value: "origami" });
+        snapshot.app.iconStyle!.selectedId = "origami";
+
         await devicePage
           .locator(".settings-row__title")
           .filter({ hasText: /^Show Dock icon$/ })
@@ -85,6 +98,7 @@ suite.define(() => {
         }, snapshot);
         await devicePage.getByText("⌘⇧Space", { exact: true }).waitFor();
         await expect.poll(() => dockIcon.isChecked()).toBe(false);
+        await expect.poll(() => iconStyle.inputValue()).toBe("origami");
         await page.screenshot({
           animations: "disabled",
           fullPage: true,

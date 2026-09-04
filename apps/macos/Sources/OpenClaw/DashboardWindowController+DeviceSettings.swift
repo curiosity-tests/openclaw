@@ -153,6 +153,9 @@ extension DashboardWindowController {
         let state = AppStateStore.shared
         let defaults = AppDefaults.standard
         switch key {
+        case .iconStyle:
+            guard let style = AppIconStyle(rawValue: value), AppIconArtwork.isAvailable(style) else { return }
+            defaults.set(style.rawValue, forKey: appIconStyleKey)
         case .computerControlProvider:
             guard value != ComputerControlProvider.cua.rawValue || CuaDriverArtifact.bundledExecutableURL != nil
             else { return }

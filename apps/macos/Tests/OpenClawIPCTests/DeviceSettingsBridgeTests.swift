@@ -46,6 +46,12 @@ struct DeviceSettingsBridgeTests {
 
     @Test func `typed setters accept the frozen strings arrays and nullable microphone`() {
         let cases: [(String, Any, DeviceSettingsRequest)] = [
+            ("app.iconStyle", "paper", .set(.iconStyle, .string("paper"))),
+            ("app.iconStyle", "heritage", .set(.iconStyle, .string("heritage"))),
+            ("app.iconStyle", "clawmark", .set(.iconStyle, .string("clawmark"))),
+            ("app.iconStyle", "origami", .set(.iconStyle, .string("origami"))),
+            ("app.iconStyle", "pincer", .set(.iconStyle, .string("pincer"))),
+            ("app.iconStyle", "openC", .set(.iconStyle, .string("openC"))),
             ("capabilities.computerControlProvider", "peekaboo", .set(.computerControlProvider, .string("peekaboo"))),
             ("capabilities.computerControlProvider", "cua", .set(.computerControlProvider, .string("cua"))),
             ("browser.cookieSync.domains", ["example.test"], .set(.cookieSyncDomains, .strings(["example.test"]))),
@@ -67,6 +73,9 @@ struct DeviceSettingsBridgeTests {
 
     @Test func `setters reject unknown keys wrong types and noncanonical enum values`() {
         let invalid: [(String, Any)] = [
+            ("app.iconStyle", "Original"),
+            ("app.iconStyle", "openc"),
+            ("app.iconStyle", ["paper"]),
             ("app.quickChatShortcut", "⌥Space"),
             ("app.launchAtLoginAvailable", true),
             ("capabilities.cuaDriverBundled", true),
@@ -90,6 +99,7 @@ struct DeviceSettingsBridgeTests {
             #expect(DeviceSettingsRequest(body: ["type": "set", "key": key, "value": value]) == nil)
         }
         let typedKeys = [
+            "app.iconStyle",
             "capabilities.computerControlProvider", "permissions.location.mode", "browser.cookieSync.domains",
             "browser.cookieSync.targetProfile", "voice.microphone", "voice.locale.primary", "voice.locale.additional",
         ]
@@ -208,7 +218,11 @@ struct DeviceSettingsBridgeTests {
                 appBuild: "123",
                 profileName: withNullableValues ? "fixture-profile" : nil),
             app: .init(
-                showDockIcon: true, iconAnimationsEnabled: false, launchAtLogin: true, launchAtLoginAvailable: false,
+                showDockIcon: true,
+                iconStyle: .init(selectedId: "paper", available: [
+                    .init(id: "paper", name: "Original"), .init(id: "origami", name: "Origami"),
+                ]),
+                iconAnimationsEnabled: false, launchAtLogin: true, launchAtLoginAvailable: false,
                 quickChatEnabled: true, quickChatShortcut: withNullableValues ? "⌥Space" : nil,
                 debugPaneEnabled: false),
             capabilities: .init(
@@ -248,6 +262,10 @@ struct DeviceSettingsBridgeTests {
       "device": {"platform": "macos", "appVersion": "2026.9.3", "appBuild": "123", "profileName": null},
       "app": {
         "showDockIcon": true, "iconAnimationsEnabled": false, "launchAtLogin": true,
+        "iconStyle": {
+          "selectedId": "paper",
+          "available": [{"id": "paper", "name": "Original"}, {"id": "origami", "name": "Origami"}]
+        },
         "launchAtLoginAvailable": false, "quickChatEnabled": true, "quickChatShortcut": null, "debugPaneEnabled": false
       },
       "capabilities": {

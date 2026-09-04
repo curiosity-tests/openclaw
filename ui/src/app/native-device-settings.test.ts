@@ -33,10 +33,25 @@ describe("native device settings wire contract", () => {
     expect(post.mock.calls).toEqual([[{ type: "status" }]]);
   });
 
+  it("accepts hosts that do not advertise Dock icon selection", () => {
+    const snapshot = createNativeDeviceSettingsSnapshot();
+    delete snapshot.app.iconStyle;
+    installBridge(snapshot);
+    expect(capability?.snapshot).toEqual(snapshot);
+  });
+
   it.each([
     ["contract", { contract: 2 }],
     ["device", { device: { platform: "macos" } }],
     ["app", { app: { ...createNativeDeviceSettingsSnapshot().app, showDockIcon: "yes" } }],
+    ...[
+      null,
+      { selectedId: 1, available: [] },
+      { selectedId: "paper", available: [{ id: "paper" }] },
+    ].map(
+      (iconStyle) =>
+        ["Dock icon", { app: { ...createNativeDeviceSettingsSnapshot().app, iconStyle } }] as const,
+    ),
     [
       "capabilities",
       {
@@ -87,7 +102,7 @@ describe("native device settings wire contract", () => {
       },
     ],
     ["updates", { updates: { available: true, automatic: true } }],
-  ])("ignores malformed %s snapshots without notifying subscribers", (_name, change) => {
+  ] as const)("ignores malformed %s snapshots without notifying subscribers", (_name, change) => {
     installBridge();
     const listener = vi.fn();
     capability?.subscribe(listener);
@@ -125,6 +140,7 @@ describe("native device settings wire contract", () => {
     const post = installBridge();
     post.mockClear();
     capability?.set("app.showDockIcon", false);
+    capability?.set("app.iconStyle", "origami");
     capability?.set("voice.microphone", null);
     capability?.set("browser.cookieSync.domains", ["example.com"]);
     capability?.set("voice.locale.primary", "de-DE");
@@ -134,6 +150,7 @@ describe("native device settings wire contract", () => {
     capability?.checkForUpdates();
     expect(post.mock.calls.map(([message]) => message)).toEqual([
       { type: "set", key: "app.showDockIcon", value: false },
+      { type: "set", key: "app.iconStyle", value: "origami" },
       { type: "set", key: "voice.microphone", value: null },
       { type: "set", key: "browser.cookieSync.domains", value: ["example.com"] },
       { type: "set", key: "voice.locale.primary", value: "de-DE" },
@@ -143,5 +160,6 @@ describe("native device settings wire contract", () => {
       { type: "check-for-updates" },
     ]);
     expect(capability?.snapshot?.app.showDockIcon).toBe(true);
+    expect(capability?.snapshot?.app.iconStyle?.selectedId).toBe("paper");
   });
 });
