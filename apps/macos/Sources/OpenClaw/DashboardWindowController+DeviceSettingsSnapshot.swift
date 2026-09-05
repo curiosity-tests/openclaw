@@ -76,7 +76,8 @@ extension DashboardWindowController {
                     mode: DeviceSettingsLocationMode(locationMode),
                     precise: defaults.object(forKey: locationPreciseKey) as? Bool ?? true)),
             voice: .init(
-                supported: voiceWakeSupported,
+                supported: voiceWakeSupported && SpeechRecognitionRequestPolicy.supportsPassiveVoiceWake(
+                    localeID: state.voiceWakeLocaleID),
                 wakeEnabled: state.swabbleEnabled,
                 wakeTriggersTalkMode: state.voiceWakeTriggersTalkMode,
                 pushToTalkEnabled: state.voicePushToTalkEnabled,
