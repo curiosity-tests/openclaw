@@ -28,11 +28,8 @@ import {
   buildInboundUserContextPrefix,
   resolveInboundUserContextPromptJoiner,
 } from "./inbound-meta.js";
-import {
-  REPLY_RUN_IDLE_SETTLE_TIMEOUT_MS,
-  createReplyOperation,
-  getActiveReplyRunCount,
-} from "./reply-run-registry.js";
+import { REPLY_RUN_IDLE_SETTLE_TIMEOUT_MS, createReplyOperation } from "./reply-run-registry.js";
+import { getActiveReplyRunCount } from "./reply-run-registry.registry.js";
 import { testing as replyRunTesting } from "./reply-run-registry.test-support.js";
 import { routeReply } from "./route-reply.runtime.js";
 import { drainFormattedSystemEvents } from "./session-system-events.js";
@@ -2986,7 +2983,7 @@ describe("runPreparedReply media-only handling", () => {
       return sessionEntry?.authProfileOverride
         ? {
             profileId: sessionEntry.authProfileOverride,
-            source: sessionEntry.authProfileOverrideSource ?? "user",
+            source: sessionEntry.authProfileOverrideSource === "auto" ? "auto" : "user",
             routeRequirement: undefined,
           }
         : undefined;
@@ -4600,12 +4597,67 @@ describe("runPreparedReply media-only handling", () => {
     const call = requireRunReplyAgentCall();
     // Think hint extracted before events arrived — level must be "low", not the model default.
     expect(call.followupRun.run.thinkLevel).toBe("low");
+    expect(call.followupRun.run.thinkLevelOverride).toBe("low");
     // The stripped user text (no "low" token) must still appear after the event block.
     expect(call.commandBody).toBe(`System: [t] Node connected.\n\n${code}`);
     expect(call.commandBody).not.toMatch(/^low\b/);
     // System events are still present in the body.
     expect(call.commandBody).toContain("System: [t] Node connected.");
   });
+
+  it.each([
+    { level: "high", clear: false, source: "turn" },
+    { level: "off", clear: false, source: "turn" },
+    { level: undefined, clear: true, source: "default" },
+    { level: undefined, clear: false, source: undefined },
+  ] as const)(
+    "records thinking origin $source for level=$level reset=$clear",
+    async ({ level, clear, source }) => {
+      const params = ownerParams();
+      params.directives = {
+        ...params.directives,
+        hasThinkDirective: level !== undefined || clear,
+        thinkLevel: level,
+        clearThinkLevel: clear,
+      };
+      params.resolvedThinkLevel = level;
+      await runPreparedReply(params);
+      expect(requireRunReplyAgentCall().followupRun.run.thinkLevelOverride).toBe(
+        source === "turn" ? level : source,
+      );
+    },
+  );
+
+  it.each(["on", "off", "full", undefined] as const)(
+    "carries parsed turn verbosity %s separately from session inheritance",
+    async (verboseLevel) => {
+      const params = ownerParams();
+      params.directives = {
+        ...params.directives,
+        hasVerboseDirective: verboseLevel !== undefined,
+        verboseLevel,
+      };
+      await runPreparedReply(params);
+      expect(requireRunReplyAgentCall().followupRun.run.verboseLevelOverride).toBe(verboseLevel);
+    },
+  );
+
+  it.each(["on", "off", "raw", undefined] as const)(
+    "carries the parsed turn trace %s without snapshotting the session preference",
+    async (traceLevel) => {
+      const params = ownerParams();
+      params.directives = {
+        ...params.directives,
+        hasTraceDirective: traceLevel !== undefined,
+        traceLevel,
+      };
+      params.sessionEntry = { sessionId: "session", updatedAt: Date.now(), traceLevel: "on" };
+      await runPreparedReply(params);
+      const run = requireRunReplyAgentCall().followupRun.run;
+      expect(run.traceLevelOverride).toBe(traceLevel);
+      expect(run.traceAuthorized).toBe(true);
+    },
+  );
 
   it("forwards resolved fast-mode override into the followup run", async () => {
     await runPrepared({

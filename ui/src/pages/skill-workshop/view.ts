@@ -648,10 +648,7 @@ function renderToday(
                   <span class="sw-today__big-sub">${t("skillWorkshop.today.addToSkills")}</span>
                 </button>
                 <button
-                  class="sw-today__big sw-today__big--tweak oc-action oc-action-secondary ${busy ===
-                  "revise"
-                    ? "is-busy"
-                    : ""}"
+                  class="sw-today__big sw-today__big--tweak ${busy === "revise" ? "is-busy" : ""}"
                   ?disabled=${disabled || !props.access.canRevise}
                   @click=${() => props.onRevise(hero.key)}
                 >
@@ -661,10 +658,7 @@ function renderToday(
                   <span class="sw-today__big-sub">${t("skillWorkshop.today.askAgent")}</span>
                 </button>
                 <button
-                  class="sw-today__big sw-today__big--skip oc-action oc-action-ghost ${busy ===
-                  "reject"
-                    ? "is-busy"
-                    : ""}"
+                  class="sw-today__big sw-today__big--skip ${busy === "reject" ? "is-busy" : ""}"
                   ?disabled=${disabled || !props.access.canReject}
                   @click=${() => props.onReject(proposalDecision(hero))}
                 >
