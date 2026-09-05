@@ -39,7 +39,9 @@ function clawHubPackageUrl(
   packageName: string | undefined,
   author: string | undefined,
 ): string | null {
-  if (!packageName || !author) return null;
+  if (!packageName || !author) {
+    return null;
+  }
   const handle = author.replace(/^@+/u, "");
   const slug = packageName.split("/").at(-1);
   return slug
@@ -56,9 +58,15 @@ function securityLabel(status: string): string {
 }
 
 function securityTone(status: string): "pass" | "warning" | "danger" | "unknown" {
-  if (/^(?:clean|pass|safe)$/iu.test(status)) return "pass";
-  if (/^(?:suspicious|warning|review)$/iu.test(status)) return "warning";
-  if (/^(?:blocked|danger|fail|malicious)$/iu.test(status)) return "danger";
+  if (/^(?:clean|pass|safe)$/iu.test(status)) {
+    return "pass";
+  }
+  if (/^(?:suspicious|warning|review)$/iu.test(status)) {
+    return "warning";
+  }
+  if (/^(?:blocked|danger|fail|malicious)$/iu.test(status)) {
+    return "danger";
+  }
   return "unknown";
 }
 
@@ -189,11 +197,21 @@ function renderTabPanel(
   result: PluginDiscoveryDetailResult,
   tab: PluginCatalogDetailTab,
 ): TemplateResult {
-  if (tab === "skills") return renderSkills(result);
-  if (tab === "configuration") return renderConfiguration(result);
-  if (tab === "compatibility") return renderCompatibility(result);
-  if (tab === "versions") return renderVersions(result);
-  if (tab === "advanced") return renderAdvanced(result);
+  if (tab === "skills") {
+    return renderSkills(result);
+  }
+  if (tab === "configuration") {
+    return renderConfiguration(result);
+  }
+  if (tab === "compatibility") {
+    return renderCompatibility(result);
+  }
+  if (tab === "versions") {
+    return renderVersions(result);
+  }
+  if (tab === "advanced") {
+    return renderAdvanced(result);
+  }
   return renderReadme(result);
 }
 
@@ -207,9 +225,15 @@ function renderDetail(result: PluginDiscoveryDetailResult, props: PluginCatalogD
     : undefined;
   const publisherName = detail.author?.displayName ?? authorHandle ?? plugin.catalog.name;
   const tabs: PluginCatalogDetailTab[] = ["readme"];
-  if (detail.skills.length) tabs.push("skills");
-  if (detail.configuration.length) tabs.push("configuration");
-  if (compatibilityRows(result).length) tabs.push("compatibility");
+  if (detail.skills.length) {
+    tabs.push("skills");
+  }
+  if (detail.configuration.length) {
+    tabs.push("configuration");
+  }
+  if (compatibilityRows(result).length) {
+    tabs.push("compatibility");
+  }
   tabs.push("versions", "advanced");
 
   return html`<section class="plugin-catalog-detail" aria-labelledby="plugin-catalog-detail-title">
@@ -243,7 +267,9 @@ function renderDetail(result: PluginDiscoveryDetailResult, props: PluginCatalogD
                   ?disabled=${!props.installBlockedReason && !props.canInstall}
                   aria-disabled=${!props.canInstall ? "true" : nothing}
                   @click=${() => {
-                    if (props.canInstall) props.onInstall();
+                    if (props.canInstall) {
+                      props.onInstall();
+                    }
                   }}
                 >
                   ${t("pluginsPage.install")}

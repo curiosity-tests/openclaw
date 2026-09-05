@@ -34,7 +34,9 @@ export class CatalogIconController {
         this.requests.delete(iconUrl);
       }
     }
-    if (changed) this.publish(next);
+    if (changed) {
+      this.publish(next);
+    }
     for (const iconUrl of eligible) {
       if (!this.urls[iconUrl] && !this.misses.has(iconUrl) && !this.requests.has(iconUrl)) {
         this.fetch(iconUrl);
@@ -43,11 +45,17 @@ export class CatalogIconController {
   }
 
   reset(): void {
-    for (const controller of this.requests.values()) controller.abort();
-    for (const blobUrl of Object.values(this.urls)) URL.revokeObjectURL(blobUrl);
+    for (const controller of this.requests.values()) {
+      controller.abort();
+    }
+    for (const blobUrl of Object.values(this.urls)) {
+      URL.revokeObjectURL(blobUrl);
+    }
     this.requests.clear();
     this.misses.clear();
-    if (Object.keys(this.urls).length > 0) this.publish({});
+    if (Object.keys(this.urls).length > 0) {
+      this.publish({});
+    }
   }
 
   private fetch(iconUrl: string): void {
@@ -60,11 +68,16 @@ export class CatalogIconController {
     })
       .then((blobUrl) => {
         if (this.requests.get(iconUrl) !== controller || !this.host.isConnected()) {
-          if (blobUrl) URL.revokeObjectURL(blobUrl);
+          if (blobUrl) {
+            URL.revokeObjectURL(blobUrl);
+          }
           return;
         }
-        if (blobUrl) this.publish({ ...this.urls, [iconUrl]: blobUrl });
-        else this.misses.add(iconUrl);
+        if (blobUrl) {
+          this.publish({ ...this.urls, [iconUrl]: blobUrl });
+        } else {
+          this.misses.add(iconUrl);
+        }
       })
       .catch(() => {
         if (this.requests.get(iconUrl) === controller && !controller.signal.aborted) {
@@ -72,7 +85,9 @@ export class CatalogIconController {
         }
       })
       .finally(() => {
-        if (this.requests.get(iconUrl) === controller) this.requests.delete(iconUrl);
+        if (this.requests.get(iconUrl) === controller) {
+          this.requests.delete(iconUrl);
+        }
       });
   }
 
