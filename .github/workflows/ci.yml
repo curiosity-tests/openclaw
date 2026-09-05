@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       leg:
-        description: "baseline (uninstrumented) or instrumented (under chalk/curiosity)"
+        description: baseline (uninstrumented) or instrumented (under chalk/curiosity)
         type: choice
         options: [instrumented, baseline]
         default: instrumented
       profile:
-        description: "CrashOverride chalk profile"
+        description: CrashOverride chalk profile
         type: string
         default: curiosity-tests-racecar
       racecar_run:
@@ -84,7 +84,14 @@ run-name: "CI ${{ inputs.leg || 'push' }} ${{ inputs.racecar_run }}"
 concurrency:
   # Canonical main uses run-number parity for two non-canceling slots. Each
   # slot keeps GitHub's single coalesced pending tip while its active run finishes.
-  group: ${{ github.event_name == 'workflow_dispatch' && format('{0}-manual-v1-{1}', github.workflow, github.run_id) || (github.event_name == 'pull_request' && format('{0}-v7-{1}', github.workflow, github.event.pull_request.number) || (github.repository == 'curiosity-tests/openclaw' && github.event_name == 'push' && github.ref == 'refs/heads/main' && format('{0}-v8-{1}-{2}', github.workflow, github.ref, (endsWith(format('{0}', github.run_number), '0') || endsWith(format('{0}', github.run_number), '2') || endsWith(format('{0}', github.run_number), '4') || endsWith(format('{0}', github.run_number), '6') || endsWith(format('{0}', github.run_number), '8')) && 'a' || 'b') || (github.repository == 'curiosity-tests/openclaw' && format('{0}-v7-{1}', github.workflow, github.ref) || format('{0}-v7-{1}-{2}', github.workflow, github.ref, github.sha)))) }}-${{ inputs.leg || 'push' }}-${{ inputs.racecar_run }}
+  # Passive draft events must not replace runnable CI before job gates: pending
+  # replacement happens even with cancel-in-progress false. Keep converted_to_draft
+  # in the PR group so it still cancels earlier work.
+  group: >-
+    ${{ github.event_name == 'pull_request' && github.event.pull_request.draft &&
+        github.event.action != 'converted_to_draft' && format('{0}-draft-v1-{1}', github.workflow, github.run_id) ||
+        github.event_name == 'workflow_dispatch' && format('{0}-manual-v1-{1}', github.workflow, github.run_id) || (github.event_name == 'pull_request' && format('{0}-v7-{1}', github.workflow, github.event.pull_request.number) || (github.repository == 'curiosity-tests/openclaw' && github.event_name == 'push' && github.ref == 'refs/heads/main' && format('{0}-v8-{1}-{2}', github.workflow, github.ref, (endsWith(format('{0}', github.run_number), '0') || endsWith(format('{0}', github.run_number), '2') || endsWith(format('{0}', github.run_number), '4') || endsWith(format('{0}', github.run_number), '6') || endsWith(format('{0}', github.run_number), '8')) && 'a' || 'b') || (github.repository == 'curiosity-tests/openclaw' && format('{0}-v7-{1}', github.workflow, github.ref) || format('{0}-v7-{1}-{2}', github.workflow, github.ref, github.sha)))) }}
+    racecar-${{ inputs.leg || 'push' }}-${{ inputs.racecar_run }}
   cancel-in-progress: false
 
 env:
@@ -355,15 +362,40 @@ jobs:
                   return False
               except PermissionError:
                   pass  # EPERM can mean zombie-only; the census must still prove extinction.
-              # Zombies are terminated, not writers. A failed/ambiguous inspection
-              # never authorizes checkout reuse, including after a denied signal probe.
-              result = subprocess.run(
-                  ["ps", "-axo", "pgid=,stat="], stdin=subprocess.DEVNULL,
-                  stdout=subprocess.PIPE, text=True, check=True,
-                  timeout=max(0.001, deadline - time.monotonic()),
-              )
-              return any(int(group) == pgid and not state.startswith("Z")
-                         for group, state in (line.split() for line in result.stdout.splitlines()))
+              # Darwin -g selects a group; procps selects its session (a superset because
+              # run_git starts a new session). Pin Darwin's standard, not legacy, -g syntax.
+              try:
+                  result = subprocess.run(
+                      ["ps", "-o", "pgid=,stat=", "-g", str(pgid)], stdin=subprocess.DEVNULL,
+                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                      env={**os.environ, "COMMAND_MODE": "unix2003"},
+                      timeout=max(0.001, deadline - time.monotonic()),
+                  )
+              except subprocess.TimeoutExpired as error:
+                  print((error.stderr or b"").decode(errors="replace"), end="", file=sys.stderr)
+                  raise
+              if result.stderr:
+                  print(result.stderr, end="", file=sys.stderr)
+              states = []
+              if result.returncode != 1 or result.stdout or result.stderr:
+                  result.check_returncode()
+                  # Validate the complete census before ignoring zombies; Darwin ps can
+                  # report sysctl errors on stderr with exit 0. Neither permits reuse.
+                  if result.stderr or not re.fullmatch(
+                      r"(?:[ \t]*[1-9][0-9]*[ \t]+[RSDTtXZxKWPIU?][<+NLlsEVWX]*[ \t]*\n)+", result.stdout
+                  ):
+                      raise RuntimeError("Invalid process group census")
+                  states = [state for group, state in (line.split() for line in result.stdout.splitlines())
+                            if int(group) == pgid]
+              if states:
+                  return any(not state.startswith("Z") for state in states)
+              # Empty selection (exit 1), or a session with only other groups, can race
+              # extinction. Require native ESRCH; a bare status 1 or EPERM proves nothing.
+              try:
+                  os.killpg(pgid, 0)
+              except ProcessLookupError:
+                  return False
+              raise RuntimeError("Process group census missed a present group")
 
 
           def drain(child, job):
@@ -783,15 +815,21 @@ jobs:
 
 
           if __name__ == "__main__":
-              exit_code = 0
+              exit_code, terminal_error = 0, None
               try:
                   main()
-              except (FetchTimeout, GitFailure) as error:
-                  exit_code = 124 if isinstance(error, FetchTimeout) else error.code
+              except FetchTimeout:
+                  exit_code = 124
+              except GitFailure as error:
+                  exit_code = error.code
               except Exception as error:
+                  exit_code, terminal_error = 125, error
+              # Leave the handler before diagnostics or exit can raise: older Python's
+              # implicit exception chaining can loop on an already-cyclic context.
+              if terminal_error is not None:
                   name, diagnostic = "unknown", "unavailable"
                   try:
-                      records = terminal_diagnostic(error, sys._getframe().f_code)
+                      records = terminal_diagnostic(terminal_error, sys._getframe().f_code)
                       diagnostic = json.dumps(records, separators=(",", ":"))
                       name = records[0]["type"]
                   except BaseException:
@@ -801,8 +839,6 @@ jobs:
                       print(f"[ci-git-owner] diagnostic={diagnostic}", file=sys.stderr)
                   except BaseException:
                       pass
-                  exit_code = 125
-              # Exit outside the handler: Python 3.9 can loop while chaining cyclic contexts.
               raise SystemExit(exit_code)
           PYTHON
 
@@ -1507,6 +1543,7 @@ jobs:
             }
             changedNodeTestShards = changedNodeTestPlan.createChangedNodeTestShards(changedPaths, {
               dedicatedContractShards: [...pluginContractShards, ...channelContractShards],
+              dedicatedUiE2e: runUiTests && !compatibilityTarget,
             });
             if (changedNodeTestShards === null) {
               changedExtensionFallbackShards =
@@ -2045,6 +2082,19 @@ jobs:
     runs-on: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid') && 'ubuntu-24.04' || (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && github.run_attempt > 1)) && 'ubuntu-24.04' || (github.repository == 'curiosity-tests/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'ubuntu-latest' || 'ubuntu-24.04') }}
     timeout-minutes: 20
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - &linux_node_checkout_step
         name: Checkout
         shell: bash
@@ -2076,6 +2126,19 @@ jobs:
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) && 'ubuntu-24.04' || (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && github.run_attempt > 1)) && 'ubuntu-24.04' || (github.repository == 'curiosity-tests/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'ubuntu-latest' || 'ubuntu-24.04') }}
     timeout-minutes: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)) && 35 || 20 }}
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -2472,6 +2535,19 @@ jobs:
       CHECKOUT_BASE_SHA: ${{ needs.preflight.outputs.diff_base_revision }}
       COMPATIBILITY_TARGET: ${{ needs.preflight.outputs.compatibility_target }}
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -2502,6 +2578,19 @@ jobs:
     runs-on: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid') && 'ubuntu-24.04' || (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && github.run_attempt > 1)) && 'ubuntu-24.04' || (github.repository == 'curiosity-tests/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'ubuntu-latest' || 'ubuntu-24.04') }}
     timeout-minutes: 10
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - *linux_node_checkout_step
 
       - name: Setup Node environment
@@ -2551,6 +2640,19 @@ jobs:
     env:
       COMPATIBILITY_TARGET: ${{ needs.preflight.outputs.compatibility_target }}
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -2631,6 +2733,19 @@ jobs:
       max-parallel: 14
       matrix: ${{ fromJson(needs.preflight.outputs.ui_e2e_matrix) }}
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -2711,6 +2826,19 @@ jobs:
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) && 'ubuntu-24.04' || (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.run_attempt > 1)) && 'ubuntu-24.04' || (github.repository == 'curiosity-tests/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'ubuntu-latest' || 'ubuntu-24.04') }}
     timeout-minutes: 20
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -2741,6 +2869,8 @@ jobs:
           ui/src/e2e/usage-sessions-owner-attribution.e2e.test.ts
           ui/src/e2e/logs-lifecycle.e2e.test.ts
           ui/src/e2e/agent-file-lifecycle.real-gateway.e2e.test.ts
+          ui/src/e2e/chat-loading-performance.real-gateway.e2e.test.ts
+          ui/src/e2e/chat-project-media.real-gateway.e2e.test.ts
           ui/src/e2e/chat-widget-sandbox.real-gateway.e2e.test.ts
           ui/src/e2e/cron-duration-save.real-gateway.e2e.test.ts
           ui/src/e2e/session-progress-hovercard.real-gateway.e2e.test.ts
@@ -2770,6 +2900,19 @@ jobs:
     env:
       COMPATIBILITY_TARGET: ${{ needs.preflight.outputs.compatibility_target }}
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -2813,6 +2956,19 @@ jobs:
     env:
       CHECKOUT_BASE_SHA: ${{ (matrix.task == 'baseline-ratchets' || matrix.task == 'bundled-protocol' || startsWith(matrix.task, 'release-lint-')) && needs.preflight.outputs.diff_base_revision || '' }}
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - *linux_node_checkout_step
       - name: Smoke test trusted Git owner action
         id: git_owner_smoke
@@ -2975,6 +3131,19 @@ jobs:
       max-parallel: ${{ (needs.preflight.outputs.runner_profile == 'github' || needs.preflight.outputs.runner_profile == 'hybrid') && 6 || 4 }}
       matrix: ${{ fromJson(needs.preflight.outputs.qa_smoke_ci_matrix) }}
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -3158,6 +3327,19 @@ jobs:
       max-parallel: 12
       matrix: ${{ fromJson(needs.preflight.outputs.plugin_contracts_matrix) }}
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -3220,6 +3402,19 @@ jobs:
       max-parallel: 12
       matrix: ${{ fromJson(needs.preflight.outputs.channel_contracts_matrix) }}
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -3246,6 +3441,19 @@ jobs:
     runs-on: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid') && 'ubuntu-24.04' || (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && github.run_attempt > 1)) && 'ubuntu-24.04' || (github.repository == 'curiosity-tests/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'ubuntu-latest' || 'ubuntu-24.04') }}
     timeout-minutes: 60
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -3504,6 +3712,19 @@ jobs:
             # Keep type checks above the constrained-host threshold; see docs/ci.md#blacksmith-runner-capacity.
             runner: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -3842,7 +4063,7 @@ jobs:
               ;;
           esac
 
-  # Keep five core Programs; ordinary hybrid runs pair them across three hosted jobs.
+  # Keep five core Programs; ordinary hybrid runs serialize them across two hosted jobs.
   # GitHub, frozen and manual runs retain five jobs. All-Blacksmith keeps one lint job.
   check-lint-hosted-core-shard:
     permissions:
@@ -3857,8 +4078,21 @@ jobs:
       fail-fast: false
       max-parallel: 5
       matrix:
-        stripe: ${{ fromJSON(needs.preflight.outputs.runner_profile == 'hybrid' && needs.preflight.outputs.frozen_target != 'true' && !inputs.release_gate && (github.event_name == 'push' || github.event_name == 'pull_request') && '[1,2,3]' || '[1,2,3,4,5]') }}
+        stripe: ${{ fromJSON(needs.preflight.outputs.runner_profile == 'hybrid' && needs.preflight.outputs.frozen_target != 'true' && !inputs.release_gate && (github.event_name == 'push' || github.event_name == 'pull_request') && '[1,2]' || '[1,2,3,4,5]') }}
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -3917,12 +4151,13 @@ jobs:
           fi
           stripes=("$CORE_STRIPE")
           if ${{ needs.preflight.outputs.runner_profile == 'hybrid' && needs.preflight.outputs.frozen_target != 'true' && !inputs.release_gate && (github.event_name == 'push' || github.event_name == 'pull_request') }}; then
-            stripes=("$((2 * CORE_STRIPE - 1))" "$((2 * CORE_STRIPE))")
+            if [ "$CORE_STRIPE" = "1" ]; then
+              stripes=(1 2)
+            else
+              stripes=(3 4 5)
+            fi
           fi
           for stripe in "${stripes[@]}"; do
-            if [ "$stripe" -gt 5 ]; then
-              continue
-            fi
             node --import tsx scripts/run-oxlint-shards.mts \
               --only=core --split-core --core-stripe="$stripe/5" --threads=1
             if [ "$RUNNER_PROFILE" = "github" ] && [ "$RELEASE_GATE" != "true" ] &&
@@ -3952,6 +4187,19 @@ jobs:
       matrix:
         stripe: [1, 2]
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -3988,6 +4236,19 @@ jobs:
       max-parallel: 12
       matrix: ${{ fromJSON(needs.preflight.outputs.check_additional_matrix) }}
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - *linux_node_checkout_step
       # The report is dispatch-only; fetching its inputs can otherwise fail skipped PR work.
       - name: Ensure Plugin SDK API diff base commit
@@ -4262,6 +4523,19 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
@@ -4301,6 +4575,19 @@ jobs:
     runs-on: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid') && 'ubuntu-24.04' || (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && github.run_attempt > 1)) && 'ubuntu-24.04' || (github.repository == 'curiosity-tests/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'ubuntu-latest' || 'ubuntu-24.04') }}
     timeout-minutes: 20
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - name: Checkout
         shell: bash
         env:
@@ -4336,6 +4623,19 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - *linux_node_checkout_step
 
       - name: Setup screenshot evidence Node
@@ -4633,6 +4933,19 @@ jobs:
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (github.event_name == 'pull_request' && (github.run_attempt > 1 || github.event.pull_request.head.repo.full_name != github.repository)) && 'ubuntu-24.04' || (github.repository == 'curiosity-tests/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'ubuntu-latest' || 'ubuntu-24.04') }}
     timeout-minutes: 60
     steps:
+      - name: Checkout code
+        uses: crashappsec/action-checkout@main
+        with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
+      - name: Assert instrumentation is live
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
       - *linux_node_checkout_step
       - name: Setup Node environment
         uses: ./.ci-harness/.github/actions/setup-node-env
