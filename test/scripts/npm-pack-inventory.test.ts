@@ -54,20 +54,20 @@ function fakeNpmEnvironment(
 }
 
 describe("npm pack inventory", () => {
-  it("runs npm pack from the package root with isolated state and config", () => {
+  it("packs the package root from an isolated npm sandbox", () => {
     const { packageRoot, root } = createPackageFixture();
     const capturePath = join(root, "capture.json");
     const npm = fakeNpmEnvironment(
       root,
       [
         "import fs from 'node:fs';",
-        "if (process.argv.includes('--version')) { process.stdout.write('11.12.1\\n'); process.exit(0); }",
-        "fs.writeFileSync(process.env.OPENCLAW_TEST_CAPTURE, JSON.stringify({",
+        "fs.appendFileSync(process.env.OPENCLAW_TEST_CAPTURE, JSON.stringify({",
         "  args: process.argv.slice(2),",
         "  cwd: process.cwd(),",
         "  home: process.env.HOME,",
         "  npmConfigKeys: Object.keys(process.env).filter((key) => /^npm_config_/i.test(key)).sort(),",
-        "}));",
+        "}) + '\\n');",
+        "if (process.argv.includes('--version')) { process.stdout.write('11.12.1\\n'); process.exit(0); }",
         "process.stdout.write(JSON.stringify([{ files: [{ path: 'package.json' }] }]));",
       ].join("\n"),
     );
@@ -76,19 +76,31 @@ describe("npm pack inventory", () => {
     npm.sourceEnv.NPM_CONFIG_SCRIPT_SHELL = "forbidden-shell";
 
     const result = collectNpmPackInventory(packageRoot, { ...npm, timeoutMs: 2_000 });
-    const capture = JSON.parse(readFileSync(capturePath, "utf8")) as {
+    const captures = readFileSync(capturePath, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line)) as Array<{
       args: string[];
       cwd: string;
       home: string;
       npmConfigKeys: string[];
-    };
+    }>;
 
     expect(result).toMatchObject({ files: ["package.json"], npmVersion: "11.12.1" });
-    expect(capture.cwd).toBe(packageRoot);
-    expect(capture.home).not.toBe(process.env.HOME);
-    expect(capture.npmConfigKeys).not.toContain("npm_config_registry");
-    expect(capture.npmConfigKeys).not.toContain("NPM_CONFIG_SCRIPT_SHELL");
-    expect(capture.args).toEqual(
+    expect(captures).toHaveLength(2);
+    const [versionCapture, packCapture] = captures;
+    expect(packCapture.cwd).toBe(versionCapture.cwd);
+    expect(packCapture.cwd).not.toBe(packageRoot);
+    expect(versionCapture.args).toEqual([`--prefix=${versionCapture.cwd}`, "--version"]);
+    expect(packCapture.args.slice(0, 3)).toEqual([
+      `--prefix=${versionCapture.cwd}`,
+      "pack",
+      packageRoot,
+    ]);
+    expect(packCapture.home).not.toBe(process.env.HOME);
+    expect(packCapture.npmConfigKeys).not.toContain("npm_config_registry");
+    expect(packCapture.npmConfigKeys).not.toContain("NPM_CONFIG_SCRIPT_SHELL");
+    expect(packCapture.args).toEqual(
       expect.arrayContaining([
         "pack",
         "--dry-run",
@@ -98,7 +110,6 @@ describe("npm pack inventory", () => {
         "--workspaces=false",
       ]),
     );
-    expect(capture.args).not.toContain(packageRoot);
   });
 
   it("reports missing and extra paths in normalized sorted order", () => {
@@ -158,8 +169,11 @@ describe("npm pack inventory", () => {
         root,
         [
           "import fs from 'node:fs';",
+          "import path from 'node:path';",
           "if (process.argv.includes('--version')) { process.stdout.write('10.9.4\\n'); process.exit(0); }",
-          "const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));",
+          "const packIndex = process.argv.indexOf('pack');",
+          "const packageRoot = process.argv[packIndex + 1];",
+          "const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8'));",
           "fs.writeFileSync(process.env.OPENCLAW_TEST_CAPTURE, JSON.stringify({ hasScripts: Object.hasOwn(packageJson, 'scripts') }));",
           exitCode === 0
             ? "process.stdout.write(JSON.stringify([{ files: [{ path: 'package.json' }] }]));"

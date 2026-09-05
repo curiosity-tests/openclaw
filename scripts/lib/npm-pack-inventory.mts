@@ -173,13 +173,13 @@ export function collectNpmPackInventory(packageRoot: string, options: NpmPackInv
   fs.writeFileSync(path.join(sandbox.configDir, "user.npmrc"), "", { mode: 0o600 });
 
   const npmEnv = controlledNpmEnvironment(options.sourceEnv ?? process.env, sandbox);
-  const spawnOptions = {
-    cwd: sandbox.cwd,
-    encoding: "utf8" as const,
-    windowsHide: true,
-  };
+  const spawnOptions = { cwd: sandbox.cwd, encoding: "utf8" as const, windowsHide: true };
   const runNpm = (label: string, args: string[], timeout: number, maxBuffer: number): string => {
-    const npm = resolveNpmRunner({ env: npmEnv, npmArgs: args, ...options.runnerParams });
+    const npm = resolveNpmRunner({
+      env: npmEnv,
+      npmArgs: [`--prefix=${sandbox.cwd}`, ...args],
+      ...options.runnerParams,
+    });
     const result = spawnSync(npm.command, npm.args, {
       ...spawnOptions,
       env: npm.env ?? npmEnv,
@@ -198,12 +198,12 @@ export function collectNpmPackInventory(packageRoot: string, options: NpmPackInv
     const npmVersion = parseNpmVersion(
       runNpm("npm --version", ["--version"], NPM_VERSION_TIMEOUT_MS, 64 * 1024),
     );
-    spawnOptions.cwd = packageRoot;
     const packOutput = withoutPackageScripts(packageRoot, () =>
       runNpm(
         "npm pack inventory",
         [
           "pack",
+          packageRoot,
           "--dry-run",
           "--json",
           "--ignore-scripts",

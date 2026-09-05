@@ -888,20 +888,37 @@ syncBuiltinESMExports();
     });
   });
 
-  it("rejects an npm-forced excluded entry injected into the tarball", () => {
+  it("rejects package .npmrc without loading its external log policy", () => {
     const packagePath = ".npmrc";
-    checkTarball({
-      files: {
+    const externalLogsDir = tempDirs.make("openclaw-npmrc-logs-");
+    const sentinelPath = join(externalLogsDir, "2000-01-01T00_00_00_000Z-debug-0.log");
+    const sentinelBytes = Buffer.from("must survive npm config loading\n");
+    writeFileSync(sentinelPath, sentinelBytes);
+    withTarball(
+      ["dist/index.js"],
+      {
         "dist/index.js": "export {};\n",
-        [packagePath]: "registry=https://example.invalid\n",
+        [packagePath]: [`logs-dir=${externalLogsDir.replaceAll("\\", "/")}`, "logs-max=0", ""].join(
+          "\n",
+        ),
       },
-      options: {
+      (tarball) => {
+        const result = spawnSync(process.execPath, [resolve(CHECK_SCRIPT), tarball], {
+          encoding: "utf8",
+        });
+
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain(
+          `package tarball contains npm-excluded entries: ${packagePath}`,
+        );
+        expect(readFileSync(sentinelPath)).toEqual(sentinelBytes);
+      },
+      undefined,
+      {
         filesOnlyArchive: true,
         packageJson: { files: ["dist", packagePath] },
       },
-      status: "nonzero",
-      stderr: [`package tarball contains npm-excluded entries: ${packagePath}`],
-    });
+    );
   });
 
   it("rejects private package cargo independently of package metadata", () => {
