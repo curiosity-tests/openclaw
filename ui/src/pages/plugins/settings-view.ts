@@ -116,12 +116,13 @@ function renderMessage(message: PluginRowMessage | undefined) {
     return nothing;
   }
   return html`<div
-    class="plugins-row-message plugins-row-message--${message.kind} oc-banner ${message.kind ===
-    "error"
-      ? "oc-banner-error"
-      : message.kind === "warning"
-        ? "oc-banner-warning"
-        : "oc-banner-success"}"
+    class="plugins-row-message plugins-row-message--${message.kind} oc-banner ${
+      message.kind === "error"
+        ? "oc-banner-error"
+        : message.kind === "warning"
+          ? "oc-banner-warning"
+          : "oc-banner-success"
+    }"
     role=${message.kind === "error" ? "alert" : "status"}
   >
     ${message.text}
@@ -429,77 +430,92 @@ function renderLifecycle(props: DetailProps, plugin: PluginCatalogItem): Templat
       control: html`<code>${plugin.id}</code>`,
       carapace: true,
     })}
-    ${plugin.version
-      ? renderSettingsRow({
-          title: t("pluginsPage.version"),
-          control: html`<span>${`v${plugin.version}`}</span>`,
-          carapace: true,
-        })
-      : nothing}
-    ${plugin.packageName
-      ? renderSettingsRow({
-          title: t("pluginsPage.detailPackage"),
-          control: html`<code>${plugin.packageName}</code>`,
-          carapace: true,
-        })
-      : nothing}
-    ${plugin.origin
-      ? renderSettingsRow({
-          title: t("pluginsPage.detailOrigin"),
-          control: html`<span>${pluginOriginLabel(plugin.origin)}</span>`,
-          carapace: true,
-        })
-      : nothing}
-    ${source
-      ? renderSettingsRow({
-          title: t("pluginsPage.installedSource"),
-          control: html`<span>${source.spec ?? source.packageName ?? source.kind}</span>`,
-          carapace: true,
-        })
-      : nothing}
-    ${source?.integrity
-      ? renderSettingsRow({
-          title: t("pluginsPage.integrity"),
-          control: html`<code title=${source.integrity}>${source.integrity.slice(0, 20)}…</code>`,
-          carapace: true,
-        })
-      : nothing}
-    ${trust
-      ? renderSettingsRow({
-          title: t("pluginsPage.trustStatus"),
-          control: html`<span>${trust.disposition}</span>`,
-          carapace: true,
-        })
-      : nothing}
-    ${plugin.removable
-      ? renderSettingsRow({
-          title: t("pluginsPage.uninstall"),
-          description: t("pluginsPage.uninstallDescription"),
-          control: renderReasonedDisabledControl(
-            props.mutationBlockedReason,
-            html`<button
-              type="button"
-              class="btn danger oc-action oc-action-secondary"
-              ?disabled=${!props.mutationBlockedReason &&
-              (!props.canMutate || Boolean(props.busy[key]))}
-              aria-disabled=${!props.canMutate ? "true" : nothing}
-              aria-label=${t("pluginsPage.uninstallNamed", { name: plugin.name })}
-              @click=${() => {
-                if (props.canMutate && !props.busy[key]) {
-                  props.onUninstall(plugin.id, key);
+    ${
+      plugin.version
+        ? renderSettingsRow({
+            title: t("pluginsPage.version"),
+            control: html`<span>${`v${plugin.version}`}</span>`,
+            carapace: true,
+          })
+        : nothing
+    }
+    ${
+      plugin.packageName
+        ? renderSettingsRow({
+            title: t("pluginsPage.detailPackage"),
+            control: html`<code>${plugin.packageName}</code>`,
+            carapace: true,
+          })
+        : nothing
+    }
+    ${
+      plugin.origin
+        ? renderSettingsRow({
+            title: t("pluginsPage.detailOrigin"),
+            control: html`<span>${pluginOriginLabel(plugin.origin)}</span>`,
+            carapace: true,
+          })
+        : nothing
+    }
+    ${
+      source
+        ? renderSettingsRow({
+            title: t("pluginsPage.installedSource"),
+            control: html`<span>${source.spec ?? source.packageName ?? source.kind}</span>`,
+            carapace: true,
+          })
+        : nothing
+    }
+    ${
+      source?.integrity
+        ? renderSettingsRow({
+            title: t("pluginsPage.integrity"),
+            control: html`<code title=${source.integrity}>${source.integrity.slice(0, 20)}…</code>`,
+            carapace: true,
+          })
+        : nothing
+    }
+    ${
+      trust
+        ? renderSettingsRow({
+            title: t("pluginsPage.trustStatus"),
+            control: html`<span>${trust.disposition}</span>`,
+            carapace: true,
+          })
+        : nothing
+    }
+    ${
+      plugin.removable
+        ? renderSettingsRow({
+            title: t("pluginsPage.uninstall"),
+            description: t("pluginsPage.uninstallDescription"),
+            control: renderReasonedDisabledControl(
+              props.mutationBlockedReason,
+              html`<button
+                type="button"
+                class="btn danger oc-action oc-action-secondary"
+                ?disabled=${
+                  !props.mutationBlockedReason && (!props.canMutate || Boolean(props.busy[key]))
                 }
-              }}
-            >
-              ${t("pluginsPage.uninstall")}
-            </button>`,
-          ),
-          carapace: true,
-        })
-      : renderSettingsRow({
-          title: t("pluginsPage.uninstall"),
-          description: t("pluginsPage.managedCannotUninstall"),
-          carapace: true,
-        })}
+                aria-disabled=${!props.canMutate ? "true" : nothing}
+                aria-label=${t("pluginsPage.uninstallNamed", { name: plugin.name })}
+                @click=${() => {
+                  if (props.canMutate && !props.busy[key]) {
+                    props.onUninstall(plugin.id, key);
+                  }
+                }}
+              >
+                ${t("pluginsPage.uninstall")}
+              </button>`,
+            ),
+            carapace: true,
+          })
+        : renderSettingsRow({
+            title: t("pluginsPage.uninstall"),
+            description: t("pluginsPage.managedCannotUninstall"),
+            carapace: true,
+          })
+    }
   `;
   return rows;
 }
@@ -598,27 +614,33 @@ export function renderPluginSettingsDetail(props: DetailProps): TemplateResult {
       </section>
       ${props.pageNotice ? renderMessage(props.pageNotice) : nothing}
       ${props.error ? renderRetryError(props.error, props.onRefresh) : nothing}
-      ${plugin.error
-        ? html`<div class="callout danger oc-banner oc-banner-error" role="alert">
-            ${formatUiExternalText(plugin.error)}
-          </div>`
-        : nothing}
+      ${
+        plugin.error
+          ? html`<div class="callout danger oc-banner oc-banner-error" role="alert">
+              ${formatUiExternalText(plugin.error)}
+            </div>`
+          : nothing
+      }
       ${renderMessage(props.messages[key])}
-      ${props.configSchema || props.configSchemaLoading || props.configError
-        ? renderSettingsSection(
-            {
-              title: t("pluginsPage.configuration"),
-              description: t("pluginsPage.configurationDescription"),
-              actions: renderConfigActions(props),
-              carapace: true,
-            },
-            html`${plugin.state === "needs-setup"
-              ? html`<div class="callout warning oc-banner oc-banner-warning" role="status">
-                  ${t("pluginsPage.setupRequiredDescription")}
-                </div>`
-              : nothing}${renderConfiguration(props, plugin)}`,
-          )
-        : nothing}
+      ${
+        props.configSchema || props.configSchemaLoading || props.configError
+          ? renderSettingsSection(
+              {
+                title: t("pluginsPage.configuration"),
+                description: t("pluginsPage.configurationDescription"),
+                actions: renderConfigActions(props),
+                carapace: true,
+              },
+              html`${
+                plugin.state === "needs-setup"
+                  ? html`<div class="callout warning oc-banner oc-banner-warning" role="status">
+                      ${t("pluginsPage.setupRequiredDescription")}
+                    </div>`
+                  : nothing
+              }${renderConfiguration(props, plugin)}`,
+            )
+          : nothing
+      }
       ${renderSettingsSection(
         {
           title: t("pluginsPage.accessCapabilities"),
