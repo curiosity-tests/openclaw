@@ -14,12 +14,14 @@ import type {
   WorkerProvisioningDispatchPlacement,
 } from "./placement-dispatch-failure.js";
 import { readWorkerProjectSnapshot } from "./project-preparation.js";
+import { syncSessionRepositoryWorkspace } from "./repository-workspace-startup.js";
 import {
   WorkerPlacementAdmissionTargetError,
   type WorkerPlacementAuthorization,
   type WorkerPlacementDispatchRequest,
 } from "./service-contract.js";
 import type { WorkerEnvironmentReconcileCore, WorkerEnvironmentService } from "./service.js";
+import type { WorkerSessionWorkspace } from "./session-workspace.js";
 
 export type WorkerPlacementRecoveryBarrier = (params: {
   sessionId: string;
@@ -29,7 +31,7 @@ export type WorkerPlacementRecoveryBarrier = (params: {
   environmentId: string;
   expectedGeneration: number;
   signal?: AbortSignal;
-  run: (localPath: string) => Promise<void>;
+  run: (workspace: WorkerSessionWorkspace) => Promise<void>;
 }) => Promise<void>;
 
 export type WorkerDevicePlacementRequirementResolver = (
@@ -164,7 +166,7 @@ export function createWorkerPlacementDispatchStartup(options: {
     placement: WorkerDispatchPlacement;
     environment: Awaited<ReturnType<WorkerEnvironmentService["create"]>>;
     expectedEnvironmentId: string;
-    localPath: string;
+    workspace: WorkerSessionWorkspace;
     onTransition?: (placement: WorkerDispatchPlacement) => void;
     authorize?: WorkerPlacementAuthorization;
     signal?: AbortSignal;
@@ -221,13 +223,64 @@ export function createWorkerPlacementDispatchStartup(options: {
       params.authorize?.();
       const gitAuthor = options.resolveGitAuthor?.(request.agentId);
       const project = readWorkerProjectSnapshot(params.environment.profileSnapshot.project);
-      const synced = await tunnel.syncWorkspace({
-        localPath: params.localPath,
-        sessionId: request.sessionId,
-        generation: placement.generation,
-        ...(gitAuthor ? { gitAuthor } : {}),
-        ...(project ? { projectKey: project.key } : {}),
-      });
+      const requireAttachedEnvironment = () => {
+        params.signal?.throwIfAborted();
+        const attachedEnvironment = environments.get(provisioned.environmentId);
+        if (
+          !attachedEnvironment ||
+          attachedEnvironment.state !== "attached" ||
+          attachedEnvironment.destroyRequestedAtMs !== null ||
+          attachedEnvironment.ownerEpoch !== ownerEpoch ||
+          attachedEnvironment.attachedSessionIds.length !== 1 ||
+          attachedEnvironment.attachedSessionIds[0] !== request.sessionId ||
+          attachedEnvironment.nodeDeviceId !== params.environment.nodeDeviceId ||
+          attachedEnvironment.leaseId !== params.environment.leaseId ||
+          attachedEnvironment.bootstrapReceipt?.bundleHash !== provisioned.bundleHash
+        ) {
+          throw new Error("Worker dispatch lost its exact environment owner before activation");
+        }
+        return attachedEnvironment;
+      };
+      const assertSyncOwner = () => {
+        params.signal?.throwIfAborted();
+        params.authorize?.();
+        requireAttachedEnvironment();
+        const current = placements.get(request.sessionId);
+        if (
+          current?.state !== "syncing" ||
+          current.generation !== placement.generation ||
+          current.environmentId !== provisioned.environmentId ||
+          current.sessionKey !== request.sessionKey ||
+          current.agentId !== request.agentId
+        ) {
+          throw new Error("Worker workspace preparation lost its exact placement owner");
+        }
+      };
+      const synced =
+        params.workspace.kind === "repository"
+          ? await syncSessionRepositoryWorkspace({
+              repository: params.workspace.repository,
+              tunnel,
+              sessionId: request.sessionId,
+              sessionKey: request.sessionKey,
+              agentId: request.agentId,
+              generation: placement.generation,
+              gitAuthor,
+              runSetupScript: request.runSetupScript,
+              recovery: params.recovery,
+              assertCurrent: assertSyncOwner,
+            })
+          : await tunnel.syncWorkspace({
+              source: {
+                kind: "local",
+                path: params.workspace.path,
+                ...(project ? { projectKey: project.key } : {}),
+              },
+              sessionId: request.sessionId,
+              generation: placement.generation,
+              ...(gitAuthor ? { gitAuthor } : {}),
+            });
+      assertSyncOwner();
       params.signal?.throwIfAborted();
       params.authorize?.();
       placement = placements.transition({
@@ -242,23 +295,6 @@ export function createWorkerPlacementDispatchStartup(options: {
       });
       options.reportTransition(params.onTransition, placement);
       const startingPlacement = placement;
-      const requireAttachedEnvironment = () => {
-        params.signal?.throwIfAborted();
-        const attachedEnvironment = environments.get(provisioned.environmentId);
-        if (
-          !attachedEnvironment ||
-          attachedEnvironment.state !== "attached" ||
-          attachedEnvironment.ownerEpoch !== ownerEpoch ||
-          attachedEnvironment.attachedSessionIds.length !== 1 ||
-          attachedEnvironment.attachedSessionIds[0] !== request.sessionId ||
-          attachedEnvironment.nodeDeviceId !== params.environment.nodeDeviceId ||
-          attachedEnvironment.leaseId !== params.environment.leaseId ||
-          attachedEnvironment.bootstrapReceipt?.bundleHash !== provisioned.bundleHash
-        ) {
-          throw new Error("Worker dispatch lost its exact environment owner before activation");
-        }
-        return attachedEnvironment;
-      };
       await requireNodePlacementEligibility(
         request,
         requireAttachedEnvironment(),
@@ -387,7 +423,7 @@ export function createWorkerPlacementDispatchStartup(options: {
           environmentId,
           expectedGeneration: placement.generation,
           signal,
-          run: async (localPath) => {
+          run: async (workspace) => {
             recoveryRunStarted = true;
             try {
               signal?.throwIfAborted();
@@ -443,7 +479,7 @@ export function createWorkerPlacementDispatchStartup(options: {
                 placement: current,
                 environment,
                 expectedEnvironmentId: environmentId,
-                localPath,
+                workspace,
                 onTransition: report,
                 signal,
                 recovery: true,

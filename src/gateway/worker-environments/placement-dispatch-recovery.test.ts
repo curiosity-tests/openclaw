@@ -1,9 +1,12 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   WORKER_EXECUTION_CONTEXT_PROTOCOL_FEATURE,
   WORKER_LAUNCH_V2_PROTOCOL_FEATURE,
   type WorkerAdmissionHandshake,
 } from "../../../packages/gateway-protocol/src/schema/worker-admission.js";
+import { createDeferredCore } from "../../shared/deferred.js";
 import type { WorkerInstallationArtifact } from "./bundle.js";
 import { createPlacementFailureActions } from "./placement-dispatch-failure.js";
 import { createWorkerPlacementDispatchStartup } from "./placement-dispatch-startup.js";
@@ -23,6 +26,114 @@ import { createWorkerWorkspaceOperationCoordinator } from "./workspace-operation
 describe("worker placement restart recovery", () => {
   support.setupWorkerEnvironmentServiceSuite();
 
+  it.each(["current", "replaced"] as const)(
+    "materializes a torn-down Gateway move before local recovery while its owner is %s",
+    async (owner) => {
+      const placements = createWorkerSessionPlacementStore({ database: support.testState.stateDb });
+      const original = createHarness(placements);
+      const ready = support.seedReady(original.ready.environmentId);
+      const environments = support.createService(support.createProvider());
+      const attached = await environments.attachSession({
+        environmentId: ready.environmentId,
+        ownerEpoch: ready.ownerEpoch,
+        sessionId: REQUEST.sessionId,
+      });
+      const active = seedActivePlacement(placements, {
+        environmentId: ready.environmentId,
+        ownerEpoch: attached.ownerEpoch,
+      });
+      if (active.state !== "active") {
+        throw new Error("Move source was not active");
+      }
+      const begun = placements.beginPlacementMove({
+        sessionId: active.sessionId,
+        source: {
+          generation: active.generation,
+          environmentId: active.environmentId,
+          ownerEpoch: active.activeOwnerEpoch,
+        },
+        target: { kind: "gateway" },
+      });
+      const reconciling = placements.startReconcile({
+        sessionId: active.sessionId,
+        environmentId: active.environmentId,
+        ownerEpoch: active.activeOwnerEpoch,
+        expectedGeneration: begun.placement.generation,
+      });
+      await environments.destroy(active.environmentId);
+      await support.reopenWorkerEnvironmentStore();
+      expect(support.testState.store.get(active.environmentId)?.state).toBe("destroyed");
+      const restartedStore = createWorkerSessionPlacementStore({
+        database: support.testState.stateDb,
+      });
+      const entered = createDeferredCore();
+      const release = createDeferredCore();
+      const checkout = path.join(support.testState.root, "recovered-checkout");
+      const file = path.join(checkout, "result.txt");
+      const prepareGatewayMove = vi.fn<
+        NonNullable<
+          Parameters<typeof createWorkerPlacementDispatchService>[0]["prepareGatewayMove"]
+        >
+      >(async ({ sessionId, sessionKey, agentId, assertCurrent }) => {
+        expect({ sessionId, sessionKey, agentId }).toEqual({
+          sessionId: active.sessionId,
+          sessionKey: active.sessionKey,
+          agentId: active.agentId,
+        });
+        assertCurrent();
+        entered.resolve();
+        await release.promise;
+        assertCurrent();
+        await fs.mkdir(checkout);
+        await fs.writeFile(file, "accepted repository result\n");
+        expect(restartedStore.get(active.sessionId)?.state).toBe("reconciling");
+      });
+      const restarted = createHarness(restartedStore, { prepareGatewayMove });
+      restarted.markEnvironmentDestroyed();
+      let replacement: ReturnType<typeof restartedStore.get>;
+      const recovering = restarted.service.reconcile();
+      try {
+        await Promise.race([entered.promise, recovering]);
+        expect(prepareGatewayMove).toHaveBeenCalledOnce();
+        expect(restartedStore.get(active.sessionId)).toEqual(reconciling);
+        expect(restarted.log).not.toContain("placement:local");
+        await expect(fs.stat(file)).rejects.toMatchObject({ code: "ENOENT" });
+        if (owner === "replaced") {
+          restartedStore.cancelPlacementMove({
+            operationId: begun.intent.operationId,
+            sessionId: active.sessionId,
+          });
+          restartedStore.fail({
+            sessionId: active.sessionId,
+            expectedGeneration: reconciling.generation,
+            recoveryError: "source replaced",
+          });
+          replacement = seedActivePlacement(restartedStore, {
+            environmentId: "replacement-environment",
+            ownerEpoch: 9,
+          });
+        }
+      } finally {
+        release.resolve();
+        await recovering;
+      }
+      if (owner === "replaced") {
+        await expect(prepareGatewayMove.mock.results[0]?.value).rejects.toThrow(
+          "lost its source owner",
+        );
+        expect(restartedStore.get(active.sessionId)).toEqual(replacement);
+        expect(restarted.log).not.toContain("placement:local");
+        await expect(fs.stat(file)).rejects.toMatchObject({ code: "ENOENT" });
+      } else {
+        expect(await fs.readFile(file, "utf8")).toBe("accepted repository result\n");
+        expect(restartedStore.get(active.sessionId)?.state).toBe("local");
+        expect(restartedStore.getPlacementMove(active.sessionId)).toBeUndefined();
+      }
+      expect(restarted.environments.startTunnel).not.toHaveBeenCalled();
+      expect(restarted.environments.destroy).not.toHaveBeenCalled();
+    },
+  );
+
   const createRecoveryService = (
     placements: ReturnType<typeof createWorkerSessionPlacementStore>,
     environments: ReturnType<typeof support.createService>,
@@ -33,14 +144,16 @@ describe("worker placement restart recovery", () => {
       runnerAvailability: { read: () => undefined, version: () => 0 },
       workspaceOperations: createWorkerWorkspaceOperationCoordinator(),
       runLocalBarrier: async ({ startDispatch }) => startDispatch(),
-      runRecoveryBarrier: async ({ run }) => await run("/gateway/workspace"),
+      runRecoveryBarrier: async ({ run }) =>
+        await run({ kind: "local", path: "/gateway/workspace" }),
       runActivationBarrier: async ({ activate }) => activate(),
       runMoveBarrier: async ({ begin }) => begin(),
       resolveMoveDestination: async () => undefined,
       runReclaimPreparation: async ({ run, authorize }) => await run(authorize),
-      runReclaimBarrier: async ({ begin, reclaim }) => await reclaim("/gateway/workspace", begin()),
+      runReclaimBarrier: async ({ begin, reclaim }) =>
+        await reclaim({ kind: "local", path: "/gateway/workspace" }, begin()),
       runFailedReclaimBarrier: async ({ reclaim }) => await reclaim(),
-      resolveWorkspacePath: async () => "/gateway/workspace",
+      resolveWorkspace: async () => ({ kind: "local", path: "/gateway/workspace" }),
       reportWorkspaceResultConflict: async () => {},
       resolveWorkspaceResultConflict: async () => undefined,
     });
@@ -643,7 +756,7 @@ describe("worker placement restart recovery", () => {
         }),
         runRecoveryBarrier: async ({ run }) => {
           if (timing === "after") {
-            await run("/gateway/workspace");
+            await run({ kind: "local", path: "/gateway/workspace" });
           }
           replacePlacement();
           throw new Error("stale recovery lifecycle was replaced");

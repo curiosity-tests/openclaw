@@ -388,7 +388,7 @@ async function collectTrackedFiles(
   return { files, truncated };
 }
 
-type CheckoutDiffParams = { cwd: string; sessionKey: string } & (
+type CheckoutDiffParams = { cwd: string; sessionKey: string; baseCommit?: string } & (
   | { scope?: "all" | "uncommitted"; commit?: never }
   | { scope: "commit"; commit: string }
 );
@@ -411,9 +411,11 @@ export async function loadCheckoutDiff(params: CheckoutDiffParams): Promise<Sess
   // Canonical root for the hardlink/escape guard: show-toplevel can contain
   // symlinked path segments, and containment is compared against realpaths.
   const realRoot = await fs.realpath(root).catch(() => root);
-  const branchBase = head
-    ? await resolveSessionDiffBase({ branch, gitOut, root })
-    : await resolveSessionDiffEmptyTree(root);
+  const branchBase = params.baseCommit
+    ? { base: params.baseCommit, baseRef: params.baseCommit }
+    : head
+      ? await resolveSessionDiffBase({ branch, gitOut, root })
+      : await resolveSessionDiffEmptyTree(root);
   const metadata =
     head && branchBase
       ? await loadSessionDiffBranchMetadata({ base: branchBase.base, gitOut, head, root })

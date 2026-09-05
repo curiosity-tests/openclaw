@@ -6556,6 +6556,8 @@ public struct SessionRow: Codable, Sendable {
     public let subagentcontrolscope: AnyCodable?
     public let swarmgroupid: String?
     public let worktree: [String: AnyCodable]?
+    public let repositoryworkspaceid: String?
+    public let repository: [String: AnyCodable]?
     public let execnode: String?
     public let execcwd: String?
     public let spawnedworkspacedir: String?
@@ -6635,6 +6637,8 @@ public struct SessionRow: Codable, Sendable {
         subagentcontrolscope: AnyCodable? = nil,
         swarmgroupid: String? = nil,
         worktree: [String: AnyCodable]? = nil,
+        repositoryworkspaceid: String? = nil,
+        repository: [String: AnyCodable]? = nil,
         execnode: String? = nil,
         execcwd: String? = nil,
         spawnedworkspacedir: String? = nil,
@@ -6713,6 +6717,8 @@ public struct SessionRow: Codable, Sendable {
         self.subagentcontrolscope = subagentcontrolscope
         self.swarmgroupid = swarmgroupid
         self.worktree = worktree
+        self.repositoryworkspaceid = repositoryworkspaceid
+        self.repository = repository
         self.execnode = execnode
         self.execcwd = execcwd
         self.spawnedworkspacedir = spawnedworkspacedir
@@ -6793,6 +6799,8 @@ public struct SessionRow: Codable, Sendable {
         case subagentcontrolscope = "subagentControlScope"
         case swarmgroupid = "swarmGroupId"
         case worktree
+        case repositoryworkspaceid = "repositoryWorkspaceId"
+        case repository
         case execnode = "execNode"
         case execcwd = "execCwd"
         case spawnedworkspacedir = "spawnedWorkspaceDir"
@@ -9802,6 +9810,7 @@ public struct SessionsCreateParams: Codable, Sendable {
     public let attachments: [[String: AnyCodable]]?
     public let projectid: String?
     public let projectgiturl: String?
+    public let repository: [String: AnyCodable]?
     public let worktree: Bool?
     public let worktreebaseref: String?
     public let worktreename: String?
@@ -9836,6 +9845,7 @@ public struct SessionsCreateParams: Codable, Sendable {
         attachments: [[String: AnyCodable]]? = nil,
         projectid: String? = nil,
         projectgiturl: String? = nil,
+        repository: [String: AnyCodable]? = nil,
         worktree: Bool? = nil,
         worktreebaseref: String? = nil,
         worktreename: String? = nil,
@@ -9869,6 +9879,7 @@ public struct SessionsCreateParams: Codable, Sendable {
         self.attachments = attachments
         self.projectid = projectid
         self.projectgiturl = projectgiturl
+        self.repository = repository
         self.worktree = worktree
         self.worktreebaseref = worktreebaseref
         self.worktreename = worktreename
@@ -9904,6 +9915,7 @@ public struct SessionsCreateParams: Codable, Sendable {
         case attachments
         case projectid = "projectId"
         case projectgiturl = "projectGitUrl"
+        case repository
         case worktree
         case worktreebaseref = "worktreeBaseRef"
         case worktreename = "worktreeName"
@@ -24368,9 +24380,66 @@ public enum DesktopSource: Codable, Sendable {
     }
 }
 
+public struct ProjectRecentRepository: Codable, Sendable {
+    public let kind: String
+    public let url: String
+    public let displayname: String
+
+    public init(
+        url: String,
+        displayname: String
+    )
+    {
+        self.kind = "repository"
+        self.url = url
+        self.displayname = displayname
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case url
+        case displayname = "displayName"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let rawContainer = try decoder.container(keyedBy: GatewayAnyCodingKey.self)
+        let unexpectedKeys = rawContainer.allKeys
+            .map(\.stringValue)
+            .filter { !Set(["kind", "url", "displayName"]).contains($0) }
+        if !unexpectedKeys.isEmpty {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: rawContainer.codingPath,
+                    debugDescription: "Unexpected keys for ProjectRecentRepository: \(unexpectedKeys.sorted().joined(separator: ", "))"
+                )
+            )
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedKind = try container.decode(String.self, forKey: .kind)
+        guard decodedKind == "repository" else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .kind,
+                in: container,
+                debugDescription: "Expected kind to equal repository"
+            )
+        }
+        self.kind = "repository"
+        self.url = try container.decode(String.self, forKey: .url)
+        self.displayname = try container.decode(String.self, forKey: .displayname)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode("repository", forKey: .kind)
+        try container.encode(url, forKey: .url)
+        try container.encode(displayname, forKey: .displayname)
+    }
+}
+
 public enum ProjectRecent: Codable, Sendable {
     case project(ProjectRecentProject)
     case folder(ProjectRecentFolder)
+    case repository(ProjectRecentRepository)
 
     private enum CodingKeys: String, CodingKey {
         case discriminator = "kind"
@@ -24382,6 +24451,7 @@ public enum ProjectRecent: Codable, Sendable {
         switch discriminator {
         case "project": self = try .project(ProjectRecentProject(from: decoder))
         case "folder": self = try .folder(ProjectRecentFolder(from: decoder))
+        case "repository": self = try .repository(ProjectRecentRepository(from: decoder))
         default:
             throw DecodingError.dataCorruptedError(
                 forKey: .discriminator,
@@ -24395,6 +24465,7 @@ public enum ProjectRecent: Codable, Sendable {
         switch self {
         case .project(let value): try value.encode(to: encoder)
         case .folder(let value): try value.encode(to: encoder)
+        case .repository(let value): try value.encode(to: encoder)
         }
     }
 }
