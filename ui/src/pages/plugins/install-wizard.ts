@@ -94,22 +94,26 @@ function renderReview(state: PluginInstallWizardState): TemplateResult {
           <dt>${t("pluginsPage.installedSource")}</dt>
           <dd>${requestSource(state)}</dd>
         </div>
-        ${detail.security
-          ? html`<div>
-              <dt>${t("pluginsPage.detailSecurity")}</dt>
-              <dd>
-                ${detail.security.status}${detail.security.summary
-                  ? ` · ${detail.security.summary}`
-                  : ""}
-              </dd>
-            </div>`
-          : nothing}
+        ${
+          detail.security
+            ? html`<div>
+                <dt>${t("pluginsPage.detailSecurity")}</dt>
+                <dd>
+                  ${detail.security.status}${
+                    detail.security.summary ? ` · ${detail.security.summary}` : ""
+                  }
+                </dd>
+              </div>`
+            : nothing
+        }
         <div>
           <dt>${t("pluginsPage.installWizard.capabilities")}</dt>
           <dd>
-            ${capabilities.length
-              ? capabilities.join(", ")
-              : t("pluginsPage.installWizard.noDeclaredCapabilities")}
+            ${
+              capabilities.length
+                ? capabilities.join(", ")
+                : t("pluginsPage.installWizard.noDeclaredCapabilities")
+            }
           </dd>
         </div>
         <div>
@@ -131,9 +135,11 @@ function renderConfiguration(props: PluginInstallWizardProps): TemplateResult {
       </div>`;
     }
     return html`<p class="plugin-install-wizard__status" role="status">
-      ${props.configSchemaLoading
-        ? t("pluginsPage.installWizard.loadingConfiguration")
-        : t("pluginsPage.schemaUnavailable")}
+      ${
+        props.configSchemaLoading
+          ? t("pluginsPage.installWizard.loadingConfiguration")
+          : t("pluginsPage.schemaUnavailable")
+      }
     </p>`;
   }
   const pluginEntry = pluginEntryValue(props.configValue, pluginId);
@@ -152,9 +158,11 @@ function renderConfiguration(props: PluginInstallWizardProps): TemplateResult {
         onRemove: props.onConfigRemove,
       })}
     </div>
-    ${props.configError
-      ? html`<div class="plugin-install-wizard__alert" role="alert">${props.configError}</div>`
-      : nothing}
+    ${
+      props.configError
+        ? html`<div class="plugin-install-wizard__alert" role="alert">${props.configError}</div>`
+        : nothing
+    }
   `;
 }
 
@@ -240,8 +248,9 @@ function renderPrimaryAction(props: PluginInstallWizardProps): TemplateResult | 
     const button = html`<button
       type="button"
       class="btn primary oc-action oc-action-primary"
-      ?disabled=${!props.mutationBlockedReason &&
-      (blocked || props.configBusy || !props.configSchema)}
+      ?disabled=${
+        !props.mutationBlockedReason && (blocked || props.configBusy || !props.configSchema)
+      }
       @click=${props.onSaveConfiguration}
     >
       ${props.configBusy ? t("pluginsPage.working") : t("pluginsPage.installWizard.saveAndEnable")}
@@ -288,29 +297,33 @@ export function renderPluginInstallWizard(props: PluginInstallWizardProps): Temp
           </div>
           ${renderPluginAuthor(author, { linked: true })}
         </div>
-        ${!isWorking
-          ? html`<button
-              type="button"
-              class="btn btn--icon oc-action oc-action-icon oc-action-secondary"
-              aria-label=${t("pluginsPage.cancel")}
-              @click=${props.onClose}
-            >
-              ${icons.x}
-            </button>`
-          : nothing}
+        ${
+          !isWorking
+            ? html`<button
+                type="button"
+                class="btn btn--icon oc-action oc-action-icon oc-action-secondary"
+                aria-label=${t("pluginsPage.cancel")}
+                @click=${props.onClose}
+              >
+                ${icons.x}
+              </button>`
+            : nothing
+        }
       </header>
       ${renderProgress(props.state.stage)}
       <div class="plugin-install-wizard__body">${renderStage(props)}</div>
       <footer class="plugin-install-wizard__actions">
-        ${props.state.stage === "review" || props.state.stage === "configuring"
-          ? html`<button
-              type="button"
-              class="btn oc-action oc-action-secondary"
-              @click=${props.onClose}
-            >
-              ${t("pluginsPage.cancel")}
-            </button>`
-          : nothing}
+        ${
+          props.state.stage === "review" || props.state.stage === "configuring"
+            ? html`<button
+                type="button"
+                class="btn oc-action oc-action-secondary"
+                @click=${props.onClose}
+              >
+                ${t("pluginsPage.cancel")}
+              </button>`
+            : nothing
+        }
         ${renderPrimaryAction(props)}
       </footer>
     </section>

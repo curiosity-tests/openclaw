@@ -71,9 +71,9 @@ function renderProposalRow(
       : "skillWorkshop.applied.revisions";
   return html`
     <button
-      class="sw-row ${latest.isNew ? "is-new" : "is-seen"} ${isSelected
-        ? "is-selected"
-        : ""} oc-card-interactive"
+      class="sw-row ${latest.isNew ? "is-new" : "is-seen"} ${
+        isSelected ? "is-selected" : ""
+      } oc-card-interactive"
       @click=${() => props.onSelect(latest.key)}
     >
       <span class="sw-row__dot"></span>

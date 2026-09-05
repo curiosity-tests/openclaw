@@ -118,9 +118,11 @@ export function renderSettingsPageHeader(props: SettingsPageHeaderProps): Templa
         <div class="page-title">${props.title}</div>
         ${props.subtitle ? html`<div class="page-subtitle">${props.subtitle}</div>` : nothing}
       </div>
-      ${props.actions && props.actions !== nothing
-        ? html`<div class="page-header-actions">${props.actions}</div>`
-        : nothing}
+      ${
+        props.actions && props.actions !== nothing
+          ? html`<div class="page-header-actions">${props.actions}</div>`
+          : nothing
+      }
     </section>
   `;
 }
@@ -136,19 +138,23 @@ export function renderSettingsSection(props: SettingsSectionProps, rows: unknown
           <div
             class="settings-section__copy ${props.carapace ? "oc-settings-section-heading" : ""}"
           >
-            ${props.title
-              ? html`
-                  <h2
-                    class="settings-section__heading ${props.carapace
-                      ? "oc-settings-section-title"
-                      : ""}"
-                  >
-                    ${props.title}${props.count !== undefined
-                      ? html` <span class="settings-count">${props.count}</span>`
-                      : nothing}
-                  </h2>
-                `
-              : nothing}
+            ${
+              props.title
+                ? html`
+                    <h2
+                      class="settings-section__heading ${
+                        props.carapace ? "oc-settings-section-title" : ""
+                      }"
+                    >
+                      ${props.title}${
+                        props.count !== undefined
+                          ? html` <span class="settings-count">${props.count}</span>`
+                          : nothing
+                      }
+                    </h2>
+                  `
+                : nothing
+            }
             ${description}
           </div>
         `
@@ -160,9 +166,11 @@ export function renderSettingsSection(props: SettingsSectionProps, rows: unknown
             class="settings-section__header ${props.carapace ? "oc-settings-section-header" : ""}"
           >
             ${copy}
-            ${props.actions
-              ? html`<div class="settings-section__actions">${props.actions}</div>`
-              : nothing}
+            ${
+              props.actions
+                ? html`<div class="settings-section__actions">${props.actions}</div>`
+                : nothing
+            }
           </div>
         `
       : nothing;
@@ -211,20 +219,24 @@ export function renderSettingsRow(props: SettingsRowProps): TemplateResult {
         <span class="settings-row__title ${props.carapace ? "oc-settings-row-title" : ""}"
           >${props.title}</span
         >
-        ${props.description
-          ? html`<span
-              class="settings-row__desc ${props.carapace ? "oc-settings-row-description" : ""}"
-              >${props.description}</span
-            >`
-          : nothing}
+        ${
+          props.description
+            ? html`<span
+                class="settings-row__desc ${props.carapace ? "oc-settings-row-description" : ""}"
+                >${props.description}</span
+              >`
+            : nothing
+        }
       </div>
-      ${props.control !== undefined && props.control !== nothing
-        ? html`<div
-            class="settings-row__control ${props.carapace ? "oc-settings-row-control" : ""}"
-          >
-            ${props.control}
-          </div>`
-        : nothing}
+      ${
+        props.control !== undefined && props.control !== nothing
+          ? html`<div
+              class="settings-row__control ${props.carapace ? "oc-settings-row-control" : ""}"
+            >
+              ${props.control}
+            </div>`
+          : nothing
+      }
     </div>
   `;
 }
@@ -237,9 +249,11 @@ export function renderSettingsNavRow(
     <button type="button" class="settings-row settings-row--nav" @click=${props.onClick}>
       <div class="settings-row__text">
         <span class="settings-row__title">${props.title}</span>
-        ${props.description
-          ? html`<span class="settings-row__desc">${props.description}</span>`
-          : nothing}
+        ${
+          props.description
+            ? html`<span class="settings-row__desc">${props.description}</span>`
+            : nothing
+        }
       </div>
       <div class="settings-row__control">
         ${props.control ?? nothing}
@@ -317,9 +331,11 @@ export function renderSettingsToggleRow(props: {
     >
       <div class="settings-row__text">
         <span class="settings-row__title">${props.title}</span>
-        ${props.description
-          ? html`<span class="settings-row__desc">${props.description}</span>`
-          : nothing}
+        ${
+          props.description
+            ? html`<span class="settings-row__desc">${props.description}</span>`
+            : nothing
+        }
       </div>
       <div class="settings-row__control">
         <wa-switch
@@ -377,15 +393,17 @@ export function renderSettingsSegmented<T extends string>(props: {
         }
       }}
     >
-      ${props.ariaLabel
-        ? html`<span slot="label" class="settings-control__sr-label">${props.ariaLabel}</span>`
-        : nothing}
+      ${
+        props.ariaLabel
+          ? html`<span slot="label" class="settings-control__sr-label">${props.ariaLabel}</span>`
+          : nothing
+      }
       ${props.options.map(
         (option) => html`
           <wa-radio
-            class="settings-segmented__btn ${props.carapace
-              ? "oc-segmented-item"
-              : ""} ${option.value === props.value ? "settings-segmented__btn--active" : ""}"
+            class="settings-segmented__btn ${
+              props.carapace ? "oc-segmented-item" : ""
+            } ${option.value === props.value ? "settings-segmented__btn--active" : ""}"
             appearance="button"
             value=${option.value}
             .checked=${live(option.value === props.value)}
@@ -415,15 +433,17 @@ export function renderSettingsStatus(props: {
   const modifier = props.kind === "muted" ? "" : ` settings-status--${props.kind}`;
   return html`
     <span
-      class="settings-status${modifier}${props.carapace
-        ? ` oc-status ${CARAPACE_STATUS_CLASS[props.kind]}`
-        : ""}"
+      class="settings-status${modifier}${
+        props.carapace ? ` oc-status ${CARAPACE_STATUS_CLASS[props.kind]}` : ""
+      }"
     >
-      ${props.dot === false
-        ? nothing
-        : html`<span
-            class="settings-status__dot ${props.carapace ? "oc-status-indicator" : ""}"
-          ></span>`}
+      ${
+        props.dot === false
+          ? nothing
+          : html`<span
+              class="settings-status__dot ${props.carapace ? "oc-status-indicator" : ""}"
+            ></span>`
+      }
       <span class=${props.carapace ? "oc-status-label" : ""}>${props.label}</span>
     </span>
   `;
@@ -465,27 +485,27 @@ export function renderSettingsLoadingSkeleton(
           { length: rowCount },
           (_, index) => html`
             <div
-              class="settings-row settings-loading-skeleton__row ${options.carapace
-                ? "oc-settings-row"
-                : ""}"
+              class="settings-row settings-loading-skeleton__row ${
+                options.carapace ? "oc-settings-row" : ""
+              }"
             >
               <div class="settings-row__text ${options.carapace ? "oc-settings-row-content" : ""}">
                 <span
-                  class="skeleton settings-loading-skeleton__title ${options.carapace
-                    ? "oc-skeleton-line oc-skeleton-line-short"
-                    : ""}"
+                  class="skeleton settings-loading-skeleton__title ${
+                    options.carapace ? "oc-skeleton-line oc-skeleton-line-short" : ""
+                  }"
                 ></span>
                 <span
-                  class="skeleton settings-loading-skeleton__description ${options.carapace
-                    ? "oc-skeleton-line"
-                    : ""}"
+                  class="skeleton settings-loading-skeleton__description ${
+                    options.carapace ? "oc-skeleton-line" : ""
+                  }"
                 ></span>
               </div>
               <div class="settings-row__control">
                 <span
-                  class="skeleton settings-loading-skeleton__control ${index % 2 === 0
-                    ? "settings-loading-skeleton__control--wide"
-                    : ""}"
+                  class="skeleton settings-loading-skeleton__control ${
+                    index % 2 === 0 ? "settings-loading-skeleton__control--wide" : ""
+                  }"
                 ></span>
               </div>
             </div>

@@ -82,15 +82,17 @@ function renderConfiguration(result: PluginDiscoveryDetailResult): TemplateResul
             <div class="plugin-catalog-detail__row-title">
               <h3><code>${field.name}</code></h3>
               <span class="plugin-catalog-detail__tag">
-                ${field.required
-                  ? t("pluginsPage.detailRequired")
-                  : t("pluginsPage.detailOptional")}
+                ${
+                  field.required ? t("pluginsPage.detailRequired") : t("pluginsPage.detailOptional")
+                }
               </span>
-              ${field.sensitive
-                ? html`<span class="plugin-catalog-detail__tag">
-                    ${t("pluginsPage.detailSensitive")}
-                  </span>`
-                : nothing}
+              ${
+                field.sensitive
+                  ? html`<span class="plugin-catalog-detail__tag">
+                      ${t("pluginsPage.detailSensitive")}
+                    </span>`
+                  : nothing
+              }
             </div>
             ${field.description ? html`<p>${field.description}</p>` : nothing}
           </article>`,
@@ -220,78 +222,96 @@ function renderDetail(result: PluginDiscoveryDetailResult, props: PluginCatalogD
           ${plugin.catalog.official ? renderPluginOfficialBadge() : nothing}
         </div>
         ${renderPluginAuthor(detail.author?.handle ?? plugin.catalog.author, { linked: true })}
-        ${plugin.catalog.summary
-          ? html`<p class="plugin-catalog-detail__summary">${plugin.catalog.summary}</p>`
-          : nothing}
+        ${
+          plugin.catalog.summary
+            ? html`<p class="plugin-catalog-detail__summary">${plugin.catalog.summary}</p>`
+            : nothing
+        }
         <div class="plugin-catalog-detail__actions">
-          ${plugin.local.action === "install"
-            ? renderReasonedDisabledControl(
-                props.installBlockedReason,
-                html`<button
-                  type="button"
-                  class="btn primary oc-action oc-action-primary"
-                  ?disabled=${!props.installBlockedReason && !props.canInstall}
-                  aria-disabled=${!props.canInstall ? "true" : nothing}
-                  @click=${() => {
-                    if (props.canInstall) props.onInstall();
-                  }}
-                >
-                  ${t("pluginsPage.install")}
-                </button>`,
-              )
-            : nothing}
-          ${packageUrl
-            ? html`<a href=${packageUrl} target="_blank" rel="noopener noreferrer">
-                ${t("pluginsPage.detailViewOnClawHub")}
-              </a>`
-            : nothing}
-          ${repoUrl
-            ? html`<a href=${repoUrl} target="_blank" rel="noopener noreferrer">
-                ${detail.verification?.sourceRepo}
-              </a>`
-            : nothing}
+          ${
+            plugin.local.action === "install"
+              ? renderReasonedDisabledControl(
+                  props.installBlockedReason,
+                  html`<button
+                    type="button"
+                    class="btn primary oc-action oc-action-primary"
+                    ?disabled=${!props.installBlockedReason && !props.canInstall}
+                    aria-disabled=${!props.canInstall ? "true" : nothing}
+                    @click=${() => {
+                      if (props.canInstall) props.onInstall();
+                    }}
+                  >
+                    ${t("pluginsPage.install")}
+                  </button>`,
+                )
+              : nothing
+          }
+          ${
+            packageUrl
+              ? html`<a href=${packageUrl} target="_blank" rel="noopener noreferrer">
+                  ${t("pluginsPage.detailViewOnClawHub")}
+                </a>`
+              : nothing
+          }
+          ${
+            repoUrl
+              ? html`<a href=${repoUrl} target="_blank" rel="noopener noreferrer">
+                  ${detail.verification?.sourceRepo}
+                </a>`
+              : nothing
+          }
         </div>
       </main>
       <aside class="plugin-catalog-detail__sidebar">
         <dl>
-          ${plugin.catalog.downloads === undefined
-            ? nothing
-            : html`<div>
-                <dt>${t("pluginsPage.catalogDownloadsColumn")}</dt>
-                <dd>${icons.download} ${formatCompactCount(plugin.catalog.downloads)}</dd>
-              </div>`}
-          ${plugin.catalog.latestVersion
-            ? html`<div>
-                <dt>${t("pluginsPage.version")}</dt>
-                <dd>${plugin.catalog.latestVersion}</dd>
-              </div>`
-            : nothing}
-          ${detail.updatedAt
-            ? html`<div>
-                <dt>${t("pluginsPage.detailUpdated")}</dt>
-                <dd>${formatDateMs(detail.updatedAt, { dateStyle: "medium" })}</dd>
-              </div>`
-            : nothing}
+          ${
+            plugin.catalog.downloads === undefined
+              ? nothing
+              : html`<div>
+                  <dt>${t("pluginsPage.catalogDownloadsColumn")}</dt>
+                  <dd>${icons.download} ${formatCompactCount(plugin.catalog.downloads)}</dd>
+                </div>`
+          }
+          ${
+            plugin.catalog.latestVersion
+              ? html`<div>
+                  <dt>${t("pluginsPage.version")}</dt>
+                  <dd>${plugin.catalog.latestVersion}</dd>
+                </div>`
+              : nothing
+          }
+          ${
+            detail.updatedAt
+              ? html`<div>
+                  <dt>${t("pluginsPage.detailUpdated")}</dt>
+                  <dd>${formatDateMs(detail.updatedAt, { dateStyle: "medium" })}</dd>
+                </div>`
+              : nothing
+          }
           <div>
             <dt>${t("pluginsPage.detailType")}</dt>
             <dd>${plugin.catalog.family}</dd>
           </div>
         </dl>
-        ${detail.security
-          ? html`<section class="plugin-catalog-detail__security">
-              <h2>${icons.shield} ${t("pluginsPage.detailSecurity")}</h2>
-              <strong>${detail.security.status}</strong>
-              ${detail.security.summary ? html`<p>${detail.security.summary}</p>` : nothing}
-              ${packageUrl
-                ? html`<a
-                    href=${`${packageUrl}/security-audit`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    >${t("pluginsPage.detailSecurityAudit")}</a
-                  >`
-                : nothing}
-            </section>`
-          : nothing}
+        ${
+          detail.security
+            ? html`<section class="plugin-catalog-detail__security">
+                <h2>${icons.shield} ${t("pluginsPage.detailSecurity")}</h2>
+                <strong>${detail.security.status}</strong>
+                ${detail.security.summary ? html`<p>${detail.security.summary}</p>` : nothing}
+                ${
+                  packageUrl
+                    ? html`<a
+                        href=${`${packageUrl}/security-audit`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        >${t("pluginsPage.detailSecurityAudit")}</a
+                      >`
+                    : nothing
+                }
+              </section>`
+            : nothing
+        }
       </aside>
     </div>
     <div
