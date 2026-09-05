@@ -22,6 +22,7 @@ import {
 } from "../../../packages/gateway-protocol/src/install-policy-warning-error-details.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
+  fetchAllOfficialClawHubPlugins,
   fetchClawHubPluginCatalog,
   fetchClawHubPluginCategories,
   fetchClawHubPluginDetail,
@@ -191,27 +192,46 @@ export const pluginsHandlers: GatewayRequestHandlers = {
     }
     try {
       const local = await listManagedPlugins({ config: context.getRuntimeConfig() });
+      const query = params.query?.trim();
+      const includeBundledOnly = params.intent === "bundled" || Boolean(query);
+      let published: Awaited<ReturnType<typeof fetchAllOfficialClawHubPlugins>> = [];
+      let publicationError: string | undefined;
+      if (includeBundledOnly) {
+        // Bundled distributions are first-party, so any published match belongs to ClawHub's
+        // official catalog. Read every page before classifying an unmatched entry as bundled-only.
+        try {
+          published = await fetchAllOfficialClawHubPlugins();
+        } catch (error) {
+          publicationError = `ClawHub is unavailable: ${formatErrorMessage(error)}. Bundled publication status could not be verified.`;
+        }
+      }
+      const canIncludeBundledOnly = includeBundledOnly && !publicationError;
       try {
-        const remote = await fetchClawHubPluginCatalog({
-          query: params.query,
-          intent: params.intent,
-          category: params.category,
-          cursor: params.cursor,
-          limit: params.pageSize ?? 20,
-        });
+        const remote =
+          params.intent === "bundled" && !query
+            ? { items: [] }
+            : await fetchClawHubPluginCatalog({
+                query,
+                intent: query || params.intent === "bundled" ? "all" : params.intent,
+                category: params.category,
+                cursor: params.cursor,
+                limit: params.pageSize ?? 20,
+              });
         respond(
           true,
           {
             items: joinClawHubPluginCatalog({
               remote: remote.items,
+              published,
               local,
-              includeLocalOnly: true,
+              includeBundledOnly: canIncludeBundledOnly,
               intent: params.intent,
               category: params.category,
               query: params.query,
               cursor: params.cursor,
             }),
             ...(remote.nextCursor ? { nextCursor: remote.nextCursor } : {}),
+            ...(publicationError ? { remoteError: publicationError } : {}),
           },
           undefined,
         );
@@ -221,14 +241,20 @@ export const pluginsHandlers: GatewayRequestHandlers = {
           {
             items: joinClawHubPluginCatalog({
               remote: [],
+              published,
               local,
-              includeLocalOnly: true,
+              includeBundledOnly: canIncludeBundledOnly,
               intent: params.intent,
               category: params.category,
               query: params.query,
               cursor: params.cursor,
             }),
-            remoteError: `ClawHub is unavailable: ${formatErrorMessage(error)}. Local plugins remain available.`,
+            remoteError: [
+              publicationError,
+              `ClawHub is unavailable: ${formatErrorMessage(error)}.${canIncludeBundledOnly ? " Bundled plugins remain available." : ""}`,
+            ]
+              .filter(Boolean)
+              .join(" "),
           },
           undefined,
         );

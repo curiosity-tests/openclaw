@@ -23,6 +23,12 @@ describe("PluginsPage icon routing", () => {
 
   afterEach(resetPluginsPageTestState);
 
+  const requestResult = async (method: string) => {
+    if (method === "plugins.catalog.categories") return { categories: [] };
+    if (method === "plugins.catalog.browse") return { items: [] };
+    return createResult();
+  };
+
   it("fetches proxied icons with auth fallback and revokes their blob URLs", async () => {
     const createObjectURL = vi.fn(() => "blob:firecrawl-icon");
     const revokeObjectURL = vi.fn();
@@ -54,7 +60,7 @@ describe("PluginsPage icon routing", () => {
         ),
       );
     vi.stubGlobal("fetch", fetchMock);
-    const { client } = createClient(async () => createResult());
+    const { client } = createClient(requestResult);
     const harness = createGateway(client);
     harness.gateway.connection.gatewayUrl = window.location.origin.replace(/^http/u, "ws");
     harness.gateway.connection.token = "first";
@@ -90,7 +96,7 @@ describe("PluginsPage icon routing", () => {
   it("uses bundled art for scoped first-party catalog ids", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 404 }));
     vi.stubGlobal("fetch", fetchMock);
-    const { client } = createClient(async () => createResult());
+    const { client } = createClient(requestResult);
     const harness = createGateway(client);
     harness.gateway.connection.gatewayUrl = window.location.origin.replace(/^http/u, "ws");
     const installedPlugin = (
@@ -161,7 +167,7 @@ describe("PluginsPage icon routing", () => {
         ),
       );
     vi.stubGlobal("fetch", fetchMock);
-    const { client } = createClient(async () => createResult());
+    const { client } = createClient(requestResult);
     const harness = createGateway(client);
     harness.gateway.connection.gatewayUrl = window.location.origin.replace(/^http/u, "ws");
     const result = createResult(

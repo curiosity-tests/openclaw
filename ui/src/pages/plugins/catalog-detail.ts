@@ -3,7 +3,7 @@ import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { icons } from "../../components/icons.ts";
 import { toSanitizedMarkdownHtml } from "../../components/markdown.ts";
 import { renderReasonedDisabledControl } from "../../components/reasoned-disabled-control.ts";
-import { renderSettingsLoadingSkeleton, renderSettingsPage } from "../../components/settings-ui.ts";
+import { renderSettingsPage } from "../../components/settings-ui.ts";
 import { t } from "../../i18n/index.ts";
 import { formatUiExternalText } from "../../lib/format-error.ts";
 import { formatDateMs } from "../../lib/format.ts";
@@ -32,20 +32,34 @@ export type PluginCatalogDetailProps = {
   canInstall: boolean;
   installBlockedReason: string | null;
   onInstall: () => void;
+  iconUrls: Readonly<Record<string, string>>;
 };
 
-function githubRepositoryUrl(repo: string | undefined): string | null {
-  return repo && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repo)
-    ? `https://github.com/${repo}`
+function clawHubPackageUrl(
+  packageName: string | undefined,
+  author: string | undefined,
+): string | null {
+  if (!packageName || !author) return null;
+  const handle = author.replace(/^@+/u, "");
+  const slug = packageName.split("/").at(-1);
+  return slug
+    ? `https://clawhub.ai/${encodeURIComponent(handle)}/plugins/${encodeURIComponent(slug)}`
     : null;
-}
-
-function clawHubPackageUrl(packageName: string | undefined): string | null {
-  return packageName ? `https://clawhub.ai/plugins/${encodeURIComponent(packageName)}` : null;
 }
 
 function tabLabel(tab: PluginCatalogDetailTab): string {
   return t(`pluginsPage.detailTabs.${tab}`);
+}
+
+function securityLabel(status: string): string {
+  return /^(?:clean|pass|safe)$/iu.test(status) ? "Pass" : status;
+}
+
+function securityTone(status: string): "pass" | "warning" | "danger" | "unknown" {
+  if (/^(?:clean|pass|safe)$/iu.test(status)) return "pass";
+  if (/^(?:suspicious|warning|review)$/iu.test(status)) return "warning";
+  if (/^(?:blocked|danger|fail|malicious)$/iu.test(status)) return "danger";
+  return "unknown";
 }
 
 function renderReadme(result: PluginDiscoveryDetailResult): TemplateResult {
@@ -185,8 +199,13 @@ function renderTabPanel(
 
 function renderDetail(result: PluginDiscoveryDetailResult, props: PluginCatalogDetailProps) {
   const { plugin, detail } = result;
-  const repoUrl = githubRepositoryUrl(detail.verification?.sourceRepo);
-  const packageUrl = clawHubPackageUrl(detail.packageName);
+  const authorHandle = detail.author?.handle ?? plugin.catalog.author;
+  const packageUrl = clawHubPackageUrl(detail.packageName, authorHandle);
+  const packageIcon = plugin.catalog.imageUrl ? props.iconUrls[plugin.catalog.imageUrl] : undefined;
+  const publisherIcon = detail.author?.imageUrl
+    ? props.iconUrls[detail.author.imageUrl]
+    : undefined;
+  const publisherName = detail.author?.displayName ?? authorHandle ?? plugin.catalog.name;
   const tabs: PluginCatalogDetailTab[] = ["readme"];
   if (detail.skills.length) tabs.push("skills");
   if (detail.configuration.length) tabs.push("configuration");
@@ -194,42 +213,33 @@ function renderDetail(result: PluginDiscoveryDetailResult, props: PluginCatalogD
   tabs.push("versions", "advanced");
 
   return html`<section class="plugin-catalog-detail" aria-labelledby="plugin-catalog-detail-title">
-    <a
-      class="plugin-catalog-detail__back"
-      href=${props.backHref}
-      @click=${(event: MouseEvent) => {
-        event.preventDefault();
-        props.onBack();
-      }}
-    >
-      <span aria-hidden="true">${icons.arrowLeft}</span>
-      ${t("pluginsPage.detailBack")}
-    </a>
+    <nav class="plugins-settings-breadcrumb" aria-label=${t("pluginsPage.breadcrumb")}>
+      <a
+        class="plugins-settings-breadcrumb__parent"
+        href=${props.backHref}
+        @click=${(event: MouseEvent) => {
+          event.preventDefault();
+          props.onBack();
+        }}
+        >${t("tabs.plugins")}</a
+      >
+      <span class="plugins-settings-breadcrumb__chevron" aria-hidden="true"
+        >${icons.chevronRight}</span
+      >
+      <span class="plugins-settings-breadcrumb__current" aria-current="page"
+        >${plugin.catalog.name}</span
+      >
+    </nav>
     <div class="plugin-catalog-detail__hero">
       <main>
-        <div class="plugin-catalog-detail__topics">
-          ${plugin.catalog.categories.map(
-            (category) => html`<span class="plugin-catalog-detail__tag">${category}</span>`,
-          )}
-          ${detail.topics.map(
-            (topic) => html`<span class="plugin-catalog-detail__tag">${topic}</span>`,
-          )}
-        </div>
         <div class="plugin-catalog-detail__title-row">
           <h1 id="plugin-catalog-detail-title">${plugin.catalog.name}</h1>
-          ${plugin.catalog.official ? renderPluginOfficialBadge() : nothing}
-        </div>
-        ${renderPluginAuthor(detail.author?.handle ?? plugin.catalog.author, { linked: true })}
-        ${plugin.catalog.summary
-          ? html`<p class="plugin-catalog-detail__summary">${plugin.catalog.summary}</p>`
-          : nothing}
-        <div class="plugin-catalog-detail__actions">
           ${plugin.local.action === "install"
             ? renderReasonedDisabledControl(
                 props.installBlockedReason,
                 html`<button
                   type="button"
-                  class="btn primary oc-action oc-action-primary"
+                  class="btn primary oc-action oc-action-primary plugin-catalog-detail__install"
                   ?disabled=${!props.installBlockedReason && !props.canInstall}
                   aria-disabled=${!props.canInstall ? "true" : nothing}
                   @click=${() => {
@@ -240,16 +250,23 @@ function renderDetail(result: PluginDiscoveryDetailResult, props: PluginCatalogD
                 </button>`,
               )
             : nothing}
-          ${packageUrl
-            ? html`<a href=${packageUrl} target="_blank" rel="noopener noreferrer">
-                ${t("pluginsPage.detailViewOnClawHub")}
-              </a>`
-            : nothing}
-          ${repoUrl
-            ? html`<a href=${repoUrl} target="_blank" rel="noopener noreferrer">
-                ${detail.verification?.sourceRepo}
-              </a>`
-            : nothing}
+        </div>
+        ${plugin.catalog.summary
+          ? html`<p class="plugin-catalog-detail__summary">${plugin.catalog.summary}</p>`
+          : nothing}
+        <div class="plugin-catalog-detail__publisher">
+          <span class="plugin-catalog-detail__publisher-icon" aria-hidden="true">
+            ${publisherIcon || packageIcon
+              ? html`<img src=${publisherIcon ?? packageIcon} alt="" />`
+              : icons.box}
+          </span>
+          <div>
+            <div class="plugin-catalog-detail__publisher-name">
+              <strong>${publisherName}</strong>
+              ${plugin.catalog.official ? renderPluginOfficialBadge() : nothing}
+            </div>
+            ${renderPluginAuthor(authorHandle, { linked: true })}
+          </div>
         </div>
       </main>
       <aside class="plugin-catalog-detail__sidebar">
@@ -272,25 +289,32 @@ function renderDetail(result: PluginDiscoveryDetailResult, props: PluginCatalogD
                 <dd>${formatDateMs(detail.updatedAt, { dateStyle: "medium" })}</dd>
               </div>`
             : nothing}
-          <div>
-            <dt>${t("pluginsPage.detailType")}</dt>
-            <dd>${plugin.catalog.family}</dd>
-          </div>
         </dl>
         ${detail.security
-          ? html`<section class="plugin-catalog-detail__security">
-              <h2>${icons.shield} ${t("pluginsPage.detailSecurity")}</h2>
-              <strong>${detail.security.status}</strong>
-              ${detail.security.summary ? html`<p>${detail.security.summary}</p>` : nothing}
-              ${packageUrl
-                ? html`<a
-                    href=${`${packageUrl}/security-audit`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    >${t("pluginsPage.detailSecurityAudit")}</a
-                  >`
-                : nothing}
-            </section>`
+          ? html`<a
+              class="plugin-catalog-detail__security plugin-catalog-detail__security--${securityTone(
+                detail.security.status,
+              )}"
+              href=${packageUrl ? `${packageUrl}/security-audit` : nothing}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <h2>${t("pluginsPage.detailSecurity")} ${icons.info}</h2>
+              <div class="plugin-catalog-detail__security-score">
+                <strong>${securityLabel(detail.security.status)}</strong>
+                <span aria-hidden="true"></span><span aria-hidden="true"></span
+                ><span aria-hidden="true"></span>
+              </div>
+            </a>`
+          : nothing}
+        ${packageUrl
+          ? html`<a
+              class="btn plugin-catalog-detail__clawhub"
+              href=${packageUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              >${t("pluginsPage.detailViewOnClawHub")}</a
+            >`
           : nothing}
       </aside>
     </div>
@@ -330,11 +354,25 @@ export function renderPluginCatalogDetail(props: PluginCatalogDetailProps): Temp
         ? html`<p class="plugin-catalog-detail__empty">${t("pluginsPage.discoveryOffline")}</p>`
         : props.result
           ? renderDetail(props.result, props)
-          : renderSettingsLoadingSkeleton({
-              label: t("pluginsPage.detailLoading"),
-              rows: 7,
-              carapace: true,
-            }),
+          : html`<section
+              class="plugin-catalog-detail plugin-catalog-detail--loading"
+              aria-label=${t("pluginsPage.detailLoading")}
+            >
+              <div class="plugin-catalog-detail__back skeleton"></div>
+              <div class="plugin-catalog-detail__hero">
+                <main>
+                  <div class="plugin-catalog-detail__loading-title skeleton"></div>
+                  <div class="plugin-catalog-detail__loading-summary skeleton"></div>
+                  <div class="plugin-catalog-detail__loading-publisher skeleton"></div>
+                </main>
+                <aside class="plugin-catalog-detail__sidebar">
+                  <div class="plugin-catalog-detail__loading-card skeleton"></div>
+                  <div class="plugin-catalog-detail__loading-card skeleton"></div>
+                </aside>
+              </div>
+              <div class="plugin-catalog-detail__loading-tabs skeleton"></div>
+              <div class="plugin-catalog-detail__loading-readme skeleton"></div>
+            </section>`,
     { wide: true, carapace: true },
   );
 }

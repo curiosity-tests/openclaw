@@ -858,15 +858,22 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
       expect(await detailTabs.getByRole("tab", { name: "Versions" }).count()).toBe(1);
       expect(await detailTabs.getByRole("tab", { name: "Advanced" }).count()).toBe(1);
       expect(await page.getByText("52.2k", { exact: true }).count()).toBe(1);
-      expect(await page.getByText("Capabilities match the stated purpose.").count()).toBe(1);
-      expect(
-        await page
-          .getByRole("link", { name: "openclaw/openclaw", exact: true })
-          .getAttribute("href"),
-      ).toBe("https://github.com/openclaw/openclaw");
+      expect(await page.getByText("Pass", { exact: true }).count()).toBe(1);
+      expect(await page.getByText("Type", { exact: true }).count()).toBe(0);
+      expect(await page.getByText("code-plugin", { exact: true }).count()).toBe(0);
+      expect(await page.getByRole("link", { name: "openclaw/openclaw", exact: true }).count()).toBe(
+        0,
+      );
       expect(
         await page.getByRole("link", { name: "@openclaw", exact: true }).getAttribute("href"),
-      ).toBe("https://clawhub.ai/user/openclaw");
+      ).toBe("https://clawhub.ai/openclaw");
+      expect(await page.getByRole("link", { name: "Security audit" }).getAttribute("href")).toBe(
+        "https://clawhub.ai/openclaw/plugins/matrix/security-audit",
+      );
+      expect(await page.getByRole("link", { name: "View on ClawHub" }).getAttribute("href")).toBe(
+        "https://clawhub.ai/openclaw/plugins/matrix",
+      );
+      expect(await page.getByRole("tab", { name: "Plugins", exact: true }).count()).toBe(0);
 
       await detailTabs.getByRole("tab", { name: "Versions" }).click();
       expect(await page.getByText("2.1.0", { exact: true }).count()).toBe(1);
@@ -1079,14 +1086,7 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
       await row.waitFor();
       expect(await row.getByText("Local Calendar", { exact: true }).count()).toBe(1);
       expect(await row.getByText(/downloads/u).count()).toBe(0);
-      expect(
-        await row
-          .getByText(
-            "This plugin has not been published to ClawHub and does not have download metrics.",
-            { exact: true },
-          )
-          .count(),
-      ).toBe(1);
+      expect(await row.getByText("—", { exact: true }).count()).toBe(1);
 
       await row.getByRole("link", { name: "Local Calendar", exact: true }).click();
       await page.getByRole("heading", { level: 1, name: "Local Calendar", exact: true }).waitFor();
@@ -1161,7 +1161,7 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
         await matrixFeatured
           .getByRole("link", { name: "@openclaw", exact: true })
           .getAttribute("href"),
-      ).toBe("https://clawhub.ai/user/openclaw");
+      ).toBe("https://clawhub.ai/openclaw");
       expect(await matrixFeatured.getByLabel("Official", { exact: true }).count()).toBe(1);
       expect(await matrixFeatured.getByText("52.2k downloads", { exact: true }).count()).toBe(1);
       expect(await matrixFeatured.locator(".plugin-download-count svg").count()).toBe(1);
@@ -1208,8 +1208,10 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
           .count(),
       ).toBe(1);
       const telegramCatalog = page.locator('[data-plugin-id="ch_QG9wZW5jbGF3L3RlbGVncmFt"]');
-      expect(await telegramCatalog.count()).toBe(0);
-      expect(await page.locator('[data-plugin-id="ch_bWVtb3J5LXBsdXM"]').count()).toBe(1);
+      expect(await telegramCatalog.count()).toBe(1);
+      expect(
+        await page.locator('.plugin-catalog-result[data-plugin-id="ch_bWVtb3J5LXBsdXM"]').count(),
+      ).toBe(1);
 
       const matrixCatalog = page.locator('.plugin-catalog-result[data-plugin-id="ch_bWF0cml4"]');
       await matrixCatalog.waitFor();
@@ -1222,7 +1224,7 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
         await matrixCatalog
           .getByRole("link", { name: "@openclaw", exact: true })
           .getAttribute("href"),
-      ).toBe("https://clawhub.ai/user/openclaw");
+      ).toBe("https://clawhub.ai/openclaw");
       expect(await page.getByText("Plugin", { exact: true }).count()).toBeGreaterThan(0);
       expect(await page.getByText("Downloads", { exact: true }).count()).toBeGreaterThan(0);
       expect(
@@ -1248,6 +1250,17 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
       ).toBe("rgba(0, 0, 0, 0)");
 
       let requestCount = (await gateway.getRequests("plugins.catalog.browse")).length;
+      expect(
+        await page
+          .getByRole("tab", { name: "Bundled", exact: true })
+          .evaluate((tab) => Array.from(tab.parentElement?.children ?? []).indexOf(tab)),
+      ).toBe(1);
+      await page.getByRole("tab", { name: "Bundled", exact: true }).click();
+      const bundledRequest = await gateway.waitForRequest("plugins.catalog.browse", {
+        after: requestCount,
+      });
+      expect(bundledRequest.params).toMatchObject({ intent: "bundled", pageSize: 25 });
+      requestCount = (await gateway.getRequests("plugins.catalog.browse")).length;
       await page.getByRole("tab", { name: "Official", exact: true }).click();
       const officialRequest = await gateway.waitForRequest("plugins.catalog.browse", {
         after: requestCount,
@@ -1258,8 +1271,7 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
       await explore.getByRole("link", { name: /Matrix/u }).waitFor();
       expect(await featuredCards.count()).toBe(9);
 
-      await page.getByRole("tab", { name: "All", exact: true }).click();
-      const search = page.getByRole("searchbox", { name: "Search ClawHub plugins" });
+      const search = page.getByRole("searchbox", { name: "Search Explore plugins" });
       requestCount = (await gateway.getRequests("plugins.catalog.browse")).length;
       await search.fill("matrix");
       await expect
@@ -1269,7 +1281,7 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
             .some(
               (request) =>
                 JSON.stringify(request.params) ===
-                JSON.stringify({ intent: "all", query: "matrix", pageSize: 25 }),
+                JSON.stringify({ intent: "official", query: "matrix", pageSize: 25 }),
             ),
         )
         .toBe(true);
@@ -1284,14 +1296,22 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
             .slice(requestCount)
             .some(
               (request) =>
-                JSON.stringify(request.params) === JSON.stringify({ intent: "all", pageSize: 25 }),
+                JSON.stringify(request.params) ===
+                JSON.stringify({ intent: "official", pageSize: 25 }),
             ),
         )
         .toBe(true);
+      await expect.poll(() => explore.locator(".plugin-catalog-result").count()).toBe(1);
+      requestCount = (await gateway.getRequests("plugins.catalog.browse")).length;
+      await page.getByRole("tab", { name: "All", exact: true }).click();
+      const allRequest = await gateway.waitForRequest("plugins.catalog.browse", {
+        after: requestCount,
+      });
+      expect(allRequest.params).toMatchObject({ intent: "all", pageSize: 25 });
       await expect.poll(() => explore.locator(".plugin-catalog-result").count()).toBe(25);
       expect(await page.getByRole("button", { name: "Back", exact: true }).count()).toBe(0);
       await page.getByRole("button", { name: "Next", exact: true }).click();
-      await page.locator(".plugin-catalog-result", { hasText: "Slack" }).waitFor();
+      await page.locator(".plugin-catalog-result", { hasText: "Second page 00" }).waitFor();
       expect(await explore.locator(".plugin-catalog-result").count()).toBe(25);
       expect(await page.getByText("Page 2", { exact: true }).count()).toBe(1);
       expect(await explore.getByRole("link", { name: /Matrix/u }).count()).toBe(0);
@@ -1300,7 +1320,9 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
       expect(await explore.locator(".plugin-catalog-result").count()).toBe(25);
       expect(await page.getByText("Page 1", { exact: true }).count()).toBe(1);
       expect(await page.getByRole("button", { name: "Back", exact: true }).count()).toBe(0);
-      expect(await page.locator(".plugin-catalog-result", { hasText: "Slack" }).count()).toBe(0);
+      expect(
+        await page.locator(".plugin-catalog-result", { hasText: "Second page 00" }).count(),
+      ).toBe(0);
       expect(
         await page.getByText("You’ve reached the end of the catalog.", { exact: true }).count(),
       ).toBe(0);

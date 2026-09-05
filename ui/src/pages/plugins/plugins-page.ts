@@ -34,6 +34,7 @@ import { OpenClawLightDomElement } from "../../lit/openclaw-element.ts";
 import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
 import "../../styles/plugins.css";
 import { renderPluginCatalogDetail, type PluginCatalogDetailTab } from "./catalog-detail.ts";
+import { CatalogIconController } from "./catalog-icon-controller.ts";
 import { renderPluginCatalogResults } from "./catalog-results.ts";
 import { renderPluginConsentDialog } from "./consent-dialog.ts";
 import {
@@ -85,6 +86,7 @@ class PluginsPage extends OpenClawLightDomElement {
     error: string | null;
   } | null = null;
   @state() private iconUrls: Record<string, string> = {};
+  @state() private catalogIconUrls: Record<string, string> = {};
   @state() private pageNotice: PluginRowMessage | null = null;
   @state() private catalogDetail: {
     id: string;
@@ -114,6 +116,21 @@ class PluginsPage extends OpenClawLightDomElement {
       this.iconUrls = urls;
     },
   });
+  private readonly catalogIcons = new CatalogIconController({
+    getFetchContext: () => ({
+      resourceBasePath: this.context.resourceBasePath,
+      gatewayUrl: this.context.gateway.connection.gatewayUrl,
+      auth: {
+        hello: this.context.gateway.snapshot.hello,
+        settings: { token: this.context.gateway.connection.token },
+        password: this.context.gateway.connection.password,
+      },
+    }),
+    isConnected: () => this.isConnected,
+    onUrlsChange: (urls) => {
+      this.catalogIconUrls = urls;
+    },
+  });
   private readonly gateway = new GatewayPageController(this, {
     getGateway: () => this.context?.gateway,
     onIdentityChange: () => {
@@ -134,6 +151,7 @@ class PluginsPage extends OpenClawLightDomElement {
     isConnected: () => this.gateway.connected,
     capture: () => this.gateway.capture(),
     isCurrent: (scope) => this.gateway.isCurrent(scope),
+    onEntriesChanged: () => this.syncCatalogIcons(),
   });
 
   private readonly consentController = new PluginsConsentController({
@@ -225,6 +243,7 @@ class PluginsPage extends OpenClawLightDomElement {
     this.discovery.disconnect();
     this.subscriptions.clear();
     this.pluginIcons.reset();
+    this.catalogIcons.reset();
     super.disconnectedCallback();
   }
 
@@ -293,6 +312,7 @@ class PluginsPage extends OpenClawLightDomElement {
       (change.identityChanged || change.connectionChanged || iconAuthChanged)
     ) {
       this.pluginIcons.reset();
+      this.catalogIcons.reset();
       this.busy = {};
     }
     if (shouldRefreshAfterChange) {
@@ -774,6 +794,7 @@ class PluginsPage extends OpenClawLightDomElement {
       const result = await loadPluginDiscoveryDetail(scope.client, detail.id);
       if (this.gateway.isCurrent(scope) && this.catalogDetail === detail) {
         this.catalogDetail = { ...detail, result };
+        this.syncCatalogIcons();
       }
     } catch (error) {
       if (this.gateway.isCurrent(scope) && this.catalogDetail === detail) {
@@ -788,6 +809,18 @@ class PluginsPage extends OpenClawLightDomElement {
     this.context.navigate("plugins", {
       pathname: pathForRoute("plugins", this.context.basePath),
     });
+  }
+
+  private syncCatalogIcons() {
+    const detail = this.catalogDetail?.result;
+    this.catalogIcons.sync(
+      [
+        ...(this.discovery.result?.items ?? []),
+        ...this.discovery.featured,
+        ...(detail ? [detail.plugin] : []),
+      ],
+      detail?.detail.author?.imageUrl ? [detail.detail.author.imageUrl] : [],
+    );
   }
 
   private updateEnabled(pluginId: string, enabled: boolean, key?: string): Promise<void> {
@@ -879,7 +912,7 @@ class PluginsPage extends OpenClawLightDomElement {
       onRefresh: () => void this.refreshCatalog(),
     };
     return html`
-      ${discovery
+      ${discovery && !this.catalogDetail
         ? renderPluginsHubHeader({
             active: "plugins",
             onSelect: (tab) => this.selectHubTab(tab),
@@ -916,6 +949,7 @@ class PluginsPage extends OpenClawLightDomElement {
                         this.openInstallWizard(this.catalogDetail.result);
                       }
                     },
+                    iconUrls: this.catalogIconUrls,
                   })
                 : html`${renderInstalledPlugins({
                     connected: this.gateway.connected,
@@ -979,6 +1013,7 @@ class PluginsPage extends OpenClawLightDomElement {
                     intent: this.discovery.intent,
                     category: this.discovery.category,
                     query: this.discovery.query,
+                    iconUrls: this.catalogIconUrls,
                     entryHref: (id) => pathForPluginCatalogEntry(id, this.context.basePath),
                     onIntentChange: (intent) => this.discovery.selectIntent(intent),
                     onCategoryChange: (category) => this.discovery.selectCategory(category),

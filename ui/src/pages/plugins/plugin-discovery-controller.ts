@@ -27,6 +27,7 @@ type PluginDiscoveryGateway = {
   isConnected: () => boolean;
   capture: () => GatewayConnectionScope | null;
   isCurrent: (scope: GatewayConnectionScope) => boolean;
+  onEntriesChanged?: () => void;
 };
 
 export class PluginDiscoveryController {
@@ -79,6 +80,7 @@ export class PluginDiscoveryController {
         this.result = { items: page.items };
         this.remoteError = page.remoteError ?? null;
         this.rememberEntries(page.observed);
+        this.gateway.onEntriesChanged?.();
       },
       onError: (error) => {
         this.error = formatUiError(error);
@@ -116,6 +118,7 @@ export class PluginDiscoveryController {
       onComplete: (result) => {
         this.featured = result.items.filter((plugin) => !plugin.local.enabled).slice(0, 9);
         this.rememberEntries(result.items);
+        this.gateway.onEntriesChanged?.();
       },
       onError: (error) => {
         this.featuredError = formatUiError(error);
@@ -197,7 +200,7 @@ export class PluginDiscoveryController {
       );
       observed.push(...page.items);
       remoteError = page.remoteError;
-      available.push(...page.items.filter((plugin) => !plugin.local.installed));
+      available.push(...page.items);
       cursor = page.nextCursor;
       shouldFetch = !params.query && Boolean(cursor);
     }

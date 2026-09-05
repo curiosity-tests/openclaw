@@ -17,7 +17,7 @@ import {
   renderPluginOfficialBadge,
 } from "./plugin-card.ts";
 
-export type PluginDiscoveryIntent = "all" | "trending" | "official";
+export type PluginDiscoveryIntent = "all" | "bundled" | "trending" | "official";
 
 export type PluginCatalogResultsProps = {
   connected: boolean;
@@ -37,6 +37,7 @@ export type PluginCatalogResultsProps = {
   intent: PluginDiscoveryIntent;
   category: string | null;
   query: string;
+  iconUrls: Readonly<Record<string, string>>;
   entryHref: (id: string) => string;
   onIntentChange: (intent: PluginDiscoveryIntent) => void;
   onCategoryChange: (category: string | null) => void;
@@ -66,6 +67,14 @@ const CATEGORY_ICONS: Readonly<Record<string, TemplateResult>> = {
 
 function categoryIcon(icon: string | undefined): TemplateResult {
   return (icon && CATEGORY_ICONS[icon]) || icons.box;
+}
+
+function renderCatalogIcon(
+  plugin: PluginDiscoveryEntry,
+  props: PluginCatalogResultsProps,
+): TemplateResult {
+  const blobUrl = plugin.catalog.imageUrl ? props.iconUrls[plugin.catalog.imageUrl] : undefined;
+  return blobUrl ? html`<img src=${blobUrl} alt="" />` : categoryIcon(plugin.catalog.icon);
 }
 
 export function formatCompactCount(value: number): string {
@@ -99,14 +108,7 @@ function renderDownloadCount(
 
 function renderPopularity(plugin: PluginDiscoveryEntry): TemplateResult | typeof nothing {
   if (plugin.catalog.publishedToClawHub === false && plugin.catalog.downloads === undefined) {
-    const label = t("pluginsPage.localPopularityUnavailable");
-    return html`<span
-      class="plugin-download-count plugin-download-count--unavailable"
-      title=${label}
-    >
-      <span aria-hidden="true">${icons.info}</span>
-      <span class="sr-only">${label}</span>
-    </span>`;
+    return html`<span class="plugin-download-count plugin-download-count--unavailable">—</span>`;
   }
   return renderDownloadCount(plugin.catalog.downloads, { compact: true });
 }
@@ -133,7 +135,7 @@ function renderFeaturedCard(
     ></a>
     <div class="installed-plugins-card__head">
       <span class="installed-plugins-card__art plugin-featured-card__art" aria-hidden="true">
-        ${categoryIcon(plugin.catalog.icon)}
+        ${renderCatalogIcon(plugin, props)}
       </span>
       ${renderPluginCardIdentity({
         name: plugin.catalog.name,
@@ -277,7 +279,7 @@ function renderResultRow(
       }}
     ></a>
     <span class="plugin-catalog-result__icon" aria-hidden="true">
-      ${categoryIcon(plugin.catalog.icon)}
+      ${renderCatalogIcon(plugin, props)}
     </span>
     <div class="plugin-catalog-result__identity">
       <div class="plugin-catalog-result__title-row">
@@ -292,6 +294,9 @@ function renderResultRow(
 }
 
 function intentLabel(intent: PluginDiscoveryIntent): string {
+  if (intent === "bundled") {
+    return t("pluginsPage.intentBundled");
+  }
   if (intent === "trending") {
     return t("pluginsPage.intentTrending");
   }
@@ -317,7 +322,7 @@ function renderExplorer(props: PluginCatalogResultsProps): TemplateResult {
             role="tablist"
             aria-label=${t("pluginsPage.viewsLabel")}
           >
-            ${(["all", "trending", "official"] as const).map(
+            ${(["all", "bundled", "trending", "official"] as const).map(
               (intent) => html`<button
                 type="button"
                 role="tab"
@@ -334,8 +339,8 @@ function renderExplorer(props: PluginCatalogResultsProps): TemplateResult {
             <input
               type="search"
               class="oc-input"
-              aria-label=${t("pluginsPage.searchClawHub")}
-              placeholder=${t("pluginsPage.searchClawHub")}
+              aria-label=${t("pluginsPage.searchPlugins")}
+              placeholder=${t("pluginsPage.searchPlugins")}
               .value=${props.query}
               @input=${(event: Event) => {
                 if (event.currentTarget instanceof HTMLInputElement) {
