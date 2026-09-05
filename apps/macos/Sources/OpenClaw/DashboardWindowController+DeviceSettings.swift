@@ -1,5 +1,4 @@
 import AppKit
-import CoreLocation
 import Foundation
 import OpenClawKit
 import WebKit
@@ -173,10 +172,9 @@ extension DashboardWindowController {
         case .cookieSyncTargetProfile:
             state.cookieSyncIntoProfile = value.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "imported"
         case .locationMode:
-            guard let mode = DeviceSettingsLocationMode(rawValue: value),
-                  await Self.requestDeviceLocationMode(mode.nativeMode), !Task.isCancelled
-            else { return }
-            defaults.set(mode.nativeMode.rawValue, forKey: locationModeKey)
+            guard let mode = DeviceSettingsLocationMode(rawValue: value) else { return }
+            let sourceID = self.notificationSourceID
+            await state.setLocationMode(mode.nativeMode) { self.canUseDeviceSettings(sourceID: sourceID) }
         case .microphone:
             let devices = VoiceWakeDeviceOptions.microphones()
             guard devices.contains(where: { $0.id == value }) else { return }
@@ -195,19 +193,6 @@ extension DashboardWindowController {
     private static func deviceChime(enabled: Bool, current: VoiceWakeChime) -> VoiceWakeChime {
         guard enabled else { return .none }
         return current == .none ? .system(name: "Glass") : current
-    }
-
-    private static func requestDeviceLocationMode(_ mode: OpenClawLocationMode) async -> Bool {
-        guard mode != .off else { return true }
-        guard CLLocationManager.locationServicesEnabled() else {
-            SystemSettingsURLSupport.openPrivacySettings(for: .location)
-            return false
-        }
-        let requireAlways = mode == .always
-        let status = await PermissionManager.locationAuthorizationStatus()
-        if PermissionManager.isLocationAuthorized(status: status, requireAlways: requireAlways) { return true }
-        let updated = await LocationPermissionRequester.shared.request(always: requireAlways)
-        return PermissionManager.isLocationAuthorized(status: updated, requireAlways: requireAlways)
     }
 
     private func openDeviceSettingsPanel(_ panel: DeviceSettingsPanel) async {

@@ -29,6 +29,12 @@ effect without native confirmation. Cancelling a cookie-domain or destination
 change restores the displayed native value; a newer edit stays pending until
 its own confirmation finishes.
 
+Voice Wake and location changes that need macOS authorization remain pending
+until permission is granted. Closing or replacing their Dashboard document
+discards the pending change. A newer setting from another Dashboard window
+also supersedes an older permission request, so its later completion cannot
+undo the newer choice.
+
 ## Requirements for stable permissions
 
 - Same path: run a release app from `/Applications/OpenClaw.app`; keep development builds at one fixed path such as `dist/OpenClaw.app`.

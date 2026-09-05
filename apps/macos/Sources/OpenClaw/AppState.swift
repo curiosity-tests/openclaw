@@ -1,4 +1,5 @@
 import AppKit
+import CoreLocation
 import Foundation
 import Observation
 import OpenClawKit
@@ -85,6 +86,7 @@ final class AppState {
     private var conflictedGatewayConfigFields: Set<GatewayConfigField> = []
     private var suppressVoiceWakeGlobalSync = false
     @ObservationIgnored private var voiceWakeEnableGeneration: UInt64 = 0
+    @ObservationIgnored private var locationModeGeneration: UInt64 = 0
     @ObservationIgnored private let voiceWakeGlobalSyncScheduler = VoiceWakeGlobalSyncScheduler()
     @ObservationIgnored private var activeComputerPresenceTask: Task<Void, Never>?
     @ObservationIgnored private var activeComputerPresenceUpdateGeneration: UInt64 = 0
@@ -1057,6 +1059,25 @@ extension AppState {
         // requesting document may commit; didSet owns persistence and runtime refresh.
         guard !Task.isCancelled, generation == self.voiceWakeEnableGeneration, requestIsCurrent() else { return }
         self.swabbleEnabled = authorized
+    }
+
+    func setLocationMode(_ mode: OpenClawLocationMode, requestIsCurrent: @MainActor () -> Bool) async {
+        guard !self.isPreview, !Task.isCancelled, requestIsCurrent() else { return }
+        self.locationModeGeneration &+= 1
+        let generation = self.locationModeGeneration
+        if mode != .off {
+            guard CLLocationManager.locationServicesEnabled() else {
+                SystemSettingsURLSupport.openPrivacySettings(for: .location)
+                return
+            }
+            let requireAlways = mode == .always
+            let status = await LocationPermissionRequester.shared.request(always: requireAlways)
+            guard PermissionManager.isLocationAuthorized(status: status, requireAlways: requireAlways) else { return }
+        }
+        // All Dashboard windows share location intent; a newer Off must invalidate
+        // an older authorization even while its requesting document remains open.
+        guard !Task.isCancelled, generation == self.locationModeGeneration, requestIsCurrent() else { return }
+        AppDefaults.standard.set(mode.rawValue, forKey: locationModeKey)
     }
 
     func setTalkEnabled(_ enabled: Bool) async {
