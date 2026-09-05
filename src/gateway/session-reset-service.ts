@@ -1497,10 +1497,7 @@ export async function performGatewaySessionReset(params: {
 
       const { prepareSubagentSessionCleanupRevocation } =
         await import("../agents/subagents/registry/subagent-registry.js");
-      const revokeSessionCleanup = prepareSubagentSessionCleanupRevocation({
-        sessionKey: target.canonicalKey,
-        agentId,
-      });
+      const revokeSessionCleanup = prepareSubagentSessionCleanupRevocation(target.canonicalKey);
       const commitGuard = () => {
         assertCompletionAuthorized?.();
         const current = loadSessionEntryReadOnly({

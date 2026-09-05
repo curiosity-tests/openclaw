@@ -1,6 +1,5 @@
 /** Coordinates subagent registration, lifecycle, delivery, steering, recovery, and persistence. */
 import type { AgentWaitParams } from "../../../../packages/gateway-protocol/src/index.js";
-import { resolveAgentIdFromSessionKey } from "../../../config/sessions.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { callGateway } from "../../../gateway/call.js";
 import type { GatewayContextResolver } from "../../../gateway/server-methods/types.js";
@@ -102,17 +101,13 @@ function persistSubagentRunsOrThrow(...runIds: string[]) {
 }
 
 /** Prepare registry hydration before the session owner's synchronous reset commit. */
-export function prepareSubagentSessionCleanupRevocation(params: {
-  sessionKey: string;
-  agentId: string;
-}): () => void {
+export function prepareSubagentSessionCleanupRevocation(sessionKey: string): () => void {
   subagentRestorer.restoreOnce(undefined, true);
   return () => {
-    if (resolveAgentIdFromSessionKey(params.sessionKey) !== params.agentId) {
-      return;
-    }
+    // The reset owner already resolved the target. Child keys are agent-scoped;
+    // an unscoped global key must not be reinterpreted as another child session.
     subagentLifecycleController.revokeTerminalSessionEffects(
-      getSubagentRunsForChildSession(params.sessionKey),
+      getSubagentRunsForChildSession(sessionKey),
     );
   };
 }
