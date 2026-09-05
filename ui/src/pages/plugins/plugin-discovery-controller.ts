@@ -184,7 +184,7 @@ export class PluginDiscoveryController {
     const observed: PluginDiscoveryEntry[] = [];
     let cursor = params.cursor;
     let remoteError: string | undefined;
-    let shouldFetch = true;
+    let shouldFetch = params.overflow === undefined || Boolean(cursor);
 
     while (available.length < CATALOG_PAGE_SIZE && shouldFetch) {
       const page = await params.client.request<PluginDiscoveryResult>(
@@ -346,6 +346,7 @@ export class PluginDiscoveryController {
     }
     this.pageIndex = targetIndex;
     this.result = { items };
+    this.gateway.onEntriesChanged?.();
     this.host.requestUpdate();
   }
 
@@ -380,6 +381,7 @@ export class PluginDiscoveryController {
       this.pageIndex = targetIndex;
       this.pages.push(page.items);
       this.result = { items: page.items };
+      this.gateway.onEntriesChanged?.();
     } catch (error) {
       if (this.gateway.isCurrent(scope) && requestEpoch === this.pageRequestEpoch) {
         this.error = formatUiError(error);

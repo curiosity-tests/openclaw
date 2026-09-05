@@ -3056,7 +3056,7 @@ export const en: TranslationMap & {
     discoveryOffline: "Connect to browse plugins from ClawHub.",
     noDiscoveryResults: "No ClawHub plugins match this view.",
     searchClawHub: "Search ClawHub plugins",
-    searchPlugins: "Search Explore plugins",
+    searchPlugins: "Search plugins",
     viewsLabel: "Catalog views",
     intentAll: "All",
     intentTrending: "Trending",

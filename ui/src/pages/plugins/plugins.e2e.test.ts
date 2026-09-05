@@ -705,7 +705,7 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
       await explore.getByRole("link", { name: /Matrix/u }).waitFor();
       expect(await featuredCards.count()).toBe(9);
 
-      const search = page.getByRole("searchbox", { name: "Search Explore plugins" });
+      const search = page.getByRole("searchbox", { name: "Search plugins" });
       requestCount = (await gateway.getRequests("plugins.catalog.browse")).length;
       await search.fill("matrix");
       await expect
