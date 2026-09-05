@@ -2119,11 +2119,10 @@ describe("activateSetupInference", () => {
 
   it.each([
     {
-      name: "auto-enables the lean surface for a verified local model",
+      name: "preserves the full tool surface for a verified local model",
       providerId: "lmstudio",
       initialConfig: {} satisfies OpenClawConfig,
-      expectedLean: true,
-      expectedAnnouncement: true,
+      expectedLean: undefined,
     },
     {
       name: "preserves an explicit localModelLean=false",
@@ -2132,14 +2131,12 @@ describe("activateSetupInference", () => {
         agents: { defaults: { experimental: { localModelLean: false } } },
       } satisfies OpenClawConfig,
       expectedLean: false,
-      expectedAnnouncement: false,
     },
     {
-      name: "stages and announces lean tools for a newly configured managed provider",
+      name: "does not persist experimental defaults for a managed provider",
       providerId: "llama-cpp",
       initialConfig: {} satisfies OpenClawConfig,
-      expectedLean: true,
-      expectedAnnouncement: true,
+      expectedLean: undefined,
     },
     ...[false, true].map((localModelLean) => ({
       name: `preserves explicit lean=${localModelLean} for a managed provider`,
@@ -2148,9 +2145,8 @@ describe("activateSetupInference", () => {
         agents: { defaults: { experimental: { localModelLean } } },
       } satisfies OpenClawConfig,
       expectedLean: localModelLean,
-      expectedAnnouncement: false,
     })),
-  ])("$name", async ({ providerId, initialConfig, expectedLean, expectedAnnouncement }) => {
+  ])("$name", async ({ providerId, initialConfig, expectedLean }) => {
     const modelRef = `${providerId}/qwen-local`;
     const managed = providerId === "llama-cpp";
     const detect = vi.fn(async () => ({ modelRef, detail: "qwen-local at localhost" }));
@@ -2241,10 +2237,7 @@ describe("activateSetupInference", () => {
     if (!result.ok) {
       throw new Error(result.error);
     }
-    expect(result.lines).toEqual([
-      `Inference verified: ${modelRef}`,
-      ...(expectedAnnouncement ? ["I enabled the lean tool surface for this local runtime."] : []),
-    ]);
+    expect(result.lines).toEqual([`Inference verified: ${modelRef}`]);
     expect(runEmbeddedAgent).toHaveBeenCalledWith(
       expect.objectContaining({
         provider: providerId,
@@ -2255,9 +2248,17 @@ describe("activateSetupInference", () => {
     expect(detect).not.toHaveBeenCalled();
     expect(prepare).toHaveBeenCalledOnce();
     expect(updateAuthStore).not.toHaveBeenCalled();
+    expect(configHarness.current().agents?.defaults?.experimental?.localModelLean).toBe(
+      expectedLean,
+    );
+    expect(configHarness.current().wizard ?? {}).not.toHaveProperty("localModelLeanAutoModel");
     expect(configHarness.current()).toMatchObject({
-      ...(expectedAnnouncement ? { wizard: { localModelLeanAutoModel: modelRef } } : {}),
-      agents: { defaults: { model: modelRef, experimental: { localModelLean: expectedLean } } },
+      agents: {
+        defaults: {
+          model: modelRef,
+          ...(expectedLean !== undefined ? { experimental: { localModelLean: expectedLean } } : {}),
+        },
+      },
       models: {
         providers: {
           [providerId]: {
@@ -2433,7 +2434,6 @@ describe("activateSetupInference", () => {
 
   it("accepts OpenAI's gpt-5.6 alias reporting Sol while preserving authored rows", async () => {
     const sourceConfig = {
-      wizard: { localModelLeanAutoModel: "lmstudio/qwen-local" },
       agents: {
         defaults: {
           model: "lmstudio/qwen-local",
@@ -2491,8 +2491,7 @@ describe("activateSetupInference", () => {
     expect(configHarness.current().models?.providers?.openai?.models).toEqual(
       sourceConfig.models.providers.openai.models,
     );
-    expect(configHarness.current().agents?.defaults?.experimental?.localModelLean).toBeUndefined();
-    expect(configHarness.current().wizard?.localModelLeanAutoModel).toBeUndefined();
+    expect(configHarness.current().agents?.defaults?.experimental?.localModelLean).toBe(true);
   });
 
   it("rejects an existing route that changes after its live probe", async () => {

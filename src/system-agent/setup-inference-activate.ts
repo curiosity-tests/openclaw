@@ -6,9 +6,7 @@ import {
   type CodexCliApiKeyCredential,
   readCodexCliActiveApiKey,
 } from "../agents/cli-credentials.js";
-import { applyAutoLocalModelLean } from "../config/local-model-lean-auto.js";
 import { createMergePatch } from "../config/merge-patch.js";
-import { resolveAgentModelPrimaryValue } from "../config/model-input.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { PluginInstallRecord } from "../config/types.plugins.js";
 import { formatErrorMessage } from "../infra/errors.js";
@@ -38,7 +36,6 @@ import {
   type SetupInferenceActivationPersistenceState,
 } from "./setup-inference-activate-persist.js";
 import {
-  AUTO_LOCAL_MODEL_LEAN_ANNOUNCEMENT,
   type ActivateSetupInferenceParams,
   type ActivateSetupInferenceResult,
   SetupInferenceActivationIndeterminateError,
@@ -199,15 +196,7 @@ async function activateSetupInferenceUnredacted(
     }
 
     const hasPreparedAuthProfiles = (plan.manualAuth?.profiles.length ?? 0) > 0;
-    // Verify the same automatic tool surface that activation will persist. Provider
-    // preparation may already have selected the candidate; retain the prior owner.
-    const autoLocalModelLeanUpdate = applyAutoLocalModelLean({
-      config: plan.config,
-      providerId: plan.provider,
-      modelRef: plan.modelRef,
-      previousModelRef: resolveAgentModelPrimaryValue(cfg.agents?.defaults?.model),
-    });
-    let testPlan = { ...plan, config: autoLocalModelLeanUpdate.config };
+    let testPlan = plan;
     if (plan.persistModelRef) {
       const agentRuntimeId = resolveSetupAgentRuntimeId(params.kind);
       const stagedConfig = await applySystemAgentModelSelection({
@@ -498,8 +487,7 @@ async function activateSetupInferenceUnredacted(
       plan.persistModelRef !== undefined ||
       plan.manualAuth !== undefined ||
       codexPluginPatch !== undefined ||
-      pendingCodexInstall !== undefined ||
-      autoLocalModelLeanUpdate.changed;
+      pendingCodexInstall !== undefined;
     if (
       !test.auth.authFingerprint &&
       (!test.auth.runtimeOwnerFingerprint ||
@@ -555,8 +543,6 @@ async function activateSetupInferenceUnredacted(
         };
       }
     }
-    let committedConfig: OpenClawConfig | undefined;
-    let autoLocalModelLeanApplied = false;
     let gatewayRestartRequired = false;
     if (!needsPersistence) {
       const latestSnapshot = await readSnapshot();
@@ -599,8 +585,6 @@ async function activateSetupInferenceUnredacted(
     }
     if (needsPersistence) {
       const persistenceState: SetupInferenceActivationPersistenceState = {
-        committedConfig,
-        autoLocalModelLeanApplied,
         codexInstallOwnership,
         gatewayRestartRequired,
       };
@@ -629,20 +613,9 @@ async function activateSetupInferenceUnredacted(
       if (persistenceFailure) {
         return persistenceFailure;
       }
-      ({
-        committedConfig,
-        autoLocalModelLeanApplied,
-        codexInstallOwnership,
-        gatewayRestartRequired,
-      } = persistenceState);
+      ({ codexInstallOwnership, gatewayRestartRequired } = persistenceState);
     }
-    const announceAutoLocalModelLean =
-      autoLocalModelLeanApplied &&
-      committedConfig?.agents?.defaults?.experimental?.localModelLean === true;
-    let lines = [
-      `Inference verified: ${plan.modelRef}`,
-      ...(announceAutoLocalModelLean ? [AUTO_LOCAL_MODEL_LEAN_ANNOUNCEMENT] : []),
-    ];
+    let lines = [`Inference verified: ${plan.modelRef}`];
     if (params.surface === "gateway" && params.recordSetupAudit !== false) {
       const after = await readSnapshot().catch(() => null);
       try {
