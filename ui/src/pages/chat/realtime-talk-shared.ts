@@ -65,6 +65,8 @@ type RealtimeTalkAudioContract = {
 };
 
 export type RealtimeTalkWebRtcSdpSessionResult = {
+  authMethod?: "oauth" | "api-key";
+  transcriptOwner?: "client" | "gateway";
   provider: string;
   transport: "webrtc";
   voiceSessionId?: string;

@@ -11,12 +11,20 @@ Talk mode covers five runtime shapes:
 - **Native macOS/iOS/Android Talk**: native speech recognition, Gateway chat, and `talk.speak` TTS. Apple Speech recognition on macOS/iOS may use network services; Android behavior depends on the installed speech service. Nodes advertise the `talk` capability and declare which `talk.*` commands they support.
 - **iOS Talk (realtime)**: client-owned WebRTC for OpenAI realtime configs that select `webrtc` transport or omit transport, including framed and frameless transcript/audio events. Explicit `gateway-relay`, `provider-websocket`, and non-OpenAI realtime configs stay on the Gateway-owned relay; non-realtime configs use the native speech loop.
 - **Browser Talk**: `talk.client.create` for client-owned `webrtc`/`provider-websocket` sessions, or `talk.session.create` for Gateway-owned `gateway-relay` sessions. `managed-room` is reserved for Gateway handoff and walkie-talkie rooms.
-- **Android Talk (realtime)**: Android uses Gateway-owned relay realtime when `talk.catalog` reports the realtime group ready and the configured model passes the Android client gate; it never opens a client-owned WebRTC session. The Gateway now supports `gpt-live-*` relay sessions, but Android intentionally keeps those models on native speech recognition, Gateway chat, and `talk.speak` until the relay path is proven live from an Android device.
+- **Android Talk (realtime)**: Android uses client-owned WebRTC through `talk.client.create`, including the OpenAI OAuth offer broker. An explicitly configured `gateway-relay` uses the existing Gateway relay. Native speech recognition and TTS require explicit `stt-tts` mode; selecting GPT-Live does not fall back to that loop.
 - **Transcription-only clients**: `talk.session.create({ mode: "transcription", transport: "gateway-relay", brain: "none" })`, then `talk.session.appendAudio` and `talk.session.close` for captions/dictation without an assistant voice response. One-shot uploaded voice notes still use the [media understanding](/nodes/media-understanding) audio path.
 
 Native Talk is a continuous loop: listen for speech, send the transcript to the model through the active session, wait for the response, then speak it via the configured Talk provider (`talk.speak`).
 
 Apple Watch uses a separate [one-turn voice and chat flow](/platforms/ios#apple-watch-voice-and-chat): native dictation, text relayed through the paired iPhone, and system-voice readback on the Watch. It is not a continuous or realtime Talk client.
+
+## Select realtime Talk authentication
+
+In Gateway **Settings → Talk**, choose the provider, model, and authentication method. The OpenAI plugin offers **ChatGPT OAuth only** and **OpenAI Platform API key only** for both `gpt-live-1-codex` and `gpt-realtime-2.1`. The selection is stored in `talk.realtime.providers.openai.authMethod` as `oauth` or `api-key`. It does not remove stored API keys, change dictation/STT settings, or reorder agent authentication profiles.
+
+Missing or failed credentials for the selected method stop the call. OAuth never falls back to a Platform key, and Platform-key selection never uses OAuth. Existing configurations that omit this setting retain their previous credential selection; choose a method explicitly to lock the authentication policy.
+
+Web and Android calls inherit the Gateway selection. Changes apply on the next call; an active call retains the credentials, model, and voice resolved at its creation. A client request for a different saved Talk model is rejected rather than silently overriding the Gateway. WebRTC session responses report the resolved `authMethod`, `model`, `voice`, and `transport`; readiness is not inferred from an offer URL or a login badge. Android uses a provider data channel, not `gateway-control-v1`. Native GPT-Live delegation remains Gateway-owned. Its frameless protocol has no client response-cancel command; Android ends that call when output cancellation is requested, instead of sending an unsupported GA command.
 
 ## Choose a Talk voice from chat
 

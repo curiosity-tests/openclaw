@@ -2315,6 +2315,9 @@ class NodeRuntime private constructor(
   val talkModeStatusText: StateFlow<String>
     get() = talkMode.statusText
 
+  val talkModeHasFailure: StateFlow<Boolean>
+    get() = talkMode.hasFailure
+
   private val wearRealtimeLifecycleMutex = Mutex()
 
   private val wearRealtimeTalkControllerLazy: Lazy<WearRealtimeTalkController> =

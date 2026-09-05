@@ -613,6 +613,8 @@ describe("talk.catalog handler", () => {
                 label: "Google Live Voice",
                 configured: true,
                 defaultModel: "gemini-live",
+                effectiveModel: "talk-model",
+                effectiveTransport: "provider-websocket",
                 modes: ["realtime"],
                 transports: ["provider-websocket", "gateway-relay"],
                 brains: ["agent-consult"],
@@ -628,6 +630,8 @@ describe("talk.catalog handler", () => {
                 id: "openai",
                 label: "OpenAI Realtime",
                 configured: false,
+                effectiveModel: "talk-model",
+                effectiveTransport: undefined,
                 modes: ["realtime"],
                 brains: ["agent-consult"],
                 supportsBrowserSession: false,
@@ -686,6 +690,7 @@ describe("talk.catalog handler", () => {
       realtime: { providers: Array<Record<string, unknown>> };
     };
     expect(catalog.realtime.providers[0]).toMatchObject({
+      effectiveModel: "gpt-live-1-codex",
       models: ["gpt-realtime-2.1", "gpt-live-1-codex"],
       voices: ["alloy", "marin"],
       voicesByModel: { "gpt-live-1-codex": ["cove", "spruce"] },
@@ -2275,8 +2280,8 @@ describe("talk.session unified handlers", () => {
 
   it.each([
     {
-      label: "request override from a configured GA model",
-      configuredModel: "gpt-realtime-2.1",
+      label: "request matches the Gateway selection",
+      configuredModel: "gpt-live-1-codex",
       requestedModel: "gpt-live-1-codex",
     },
     {
@@ -3239,6 +3244,41 @@ describe("talk.client.steer handler", () => {
 });
 
 describe("talk.client.create handler", () => {
+  it.each(
+    ["gpt-live-1-codex", "gpt-realtime-2.1"].flatMap((model) =>
+      ["top", "provider"].map((location) => ({ model, location })),
+    ),
+  )(
+    "rejects client divergence from Gateway model $model at $location",
+    async ({ model, location }) => {
+      const other = model === "gpt-live-1-codex" ? "gpt-realtime-2.1" : "gpt-live-1-codex";
+      for (const connId of ["web-client", "android-client"]) {
+        const respond = vi.fn();
+        await callTalkHandler("talk.client.create", {
+          params: { sessionKey: "main", model: other },
+          client: { connId },
+          respond,
+          context: {
+            getRuntimeConfig: () =>
+              ({
+                talk: {
+                  realtime: {
+                    provider: "openai",
+                    ...(location === "top" ? { model } : { providers: { openai: { model } } }),
+                  },
+                },
+              }) as OpenClawConfig,
+          },
+        });
+        expect(respond.mock.calls[0]?.[0]).toBe(false);
+        expect(respond.mock.calls[0]?.[2]?.message).toContain(
+          "Talk model is selected on the Gateway",
+        );
+      }
+      expect(mocks.resolveConfiguredRealtimeVoiceProvider).not.toHaveBeenCalled();
+    },
+  );
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.resolveRealtimeVoiceProviderCapabilities.mockImplementation(
@@ -3425,7 +3465,7 @@ describe("talk.client.create handler", () => {
     });
   });
 
-  it("passes a requested model override into selection and capability resolution", async () => {
+  it("passes an unsaved requested model into selection and capability resolution", async () => {
     const createBrowserSession = vi.fn(async () => ({
       provider: "openai",
       transport: "webrtc" as const,
@@ -3460,7 +3500,6 @@ describe("talk.client.create handler", () => {
             talk: {
               realtime: {
                 provider: "openai",
-                model: "gpt-realtime-2.1",
               },
             },
           }) as OpenClawConfig,
@@ -3670,6 +3709,7 @@ describe("talk.client.create handler", () => {
       context,
     });
     const createInput = mockCallArg(createBrowserSession) as Record<string, unknown>;
+    expectRespondOk(createRespond, { transcriptOwner: "client", controlSource: "delegation" });
     const consult = (
       createInput.runAgentConsult as (params: { prompt: string }) => Promise<{ text: string }>
     )({ prompt: "Check the release" });

@@ -6,3 +6,6 @@
 -dontwarn lombok.Generated
 -dontwarn org.slf4j.impl.StaticLoggerBinder
 -dontwarn sun.net.spi.nameservice.NameServiceDescriptor
+
+# WebRTC's JNI looks up Java callbacks and constructors by their original names.
+-keep class org.webrtc.** { *; }

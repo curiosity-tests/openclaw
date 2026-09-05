@@ -28,6 +28,7 @@ type TalkMutationHarnessOptions = {
     params: Record<string, unknown>,
   ) => Promise<{ triggers: string[] }>;
   activeProvider?: string | null;
+  authMethods?: TalkCatalogResult["realtime"]["providers"][number]["authMethods"];
   aliases?: string[];
   consultRouting?: string | null;
   defaultModel?: string;
@@ -62,6 +63,7 @@ function createTalkMutationHarness(options: TalkMutationHarnessOptions = {}) {
                 label: "OpenAI",
                 configured: true,
                 aliases: options.aliases ?? [],
+                authMethods: options.authMethods,
                 models: ["gpt-live-1-codex"],
                 voices: ["marin"],
                 voicesByModel: { "gpt-live-1-codex": ["cove", "spruce"] },
@@ -188,6 +190,36 @@ afterEach(() => {
   document.body.replaceChildren();
   vi.restoreAllMocks();
   vi.useRealTimers();
+});
+
+describe("Talk authentication settings", () => {
+  it("locks the selected provider when choosing strict authentication from Auto", async () => {
+    const { page, request, runtimeConfig } = createTalkMutationHarness({
+      provider: null,
+      authMethods: [
+        { id: "oauth", label: "OAuth only" },
+        { id: "api-key", label: "API key only" },
+      ],
+    });
+    await vi.waitFor(() => expect(request).toHaveBeenCalledWith("talk.catalog", {}));
+    await page.updateComplete;
+    const select = page.querySelector<HTMLSelectElement>(
+      'select[aria-label="Talk authentication"]',
+    );
+    expect(select).not.toBeNull();
+    select!.value = "oauth";
+    select!.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(runtimeConfig.patchForm).toHaveBeenCalledWith(
+      ["talk", "realtime", "provider"],
+      "openai",
+    );
+    expect(runtimeConfig.patchForm).toHaveBeenCalledWith(
+      ["talk", "realtime", "providers", "openai", "authMethod"],
+      "oauth",
+    );
+    expect(runtimeConfig.patchForm).toHaveBeenCalledTimes(2);
+    expect(runtimeConfig.removeFormValue).not.toHaveBeenCalled();
+  });
 });
 
 describe("Talk device and voice wake settings", () => {
@@ -697,50 +729,55 @@ describe("renderTalk", () => {
     expect(onModelChange).toHaveBeenCalledWith("gpt-realtime");
   });
 
-  it.each([
-    ["gpt-liveish", false],
-    ["gpt-lively", false],
-    ["gpt-live-1-codex", true],
-  ] as const)("renders the GPT-Live hint only for the exact family: %s", (model, showsHint) => {
-    const container = document.createElement("div");
-    render(
-      renderTalk({
-        selection: {
-          provider: "openai",
-          model,
-          speakerVoice: null,
-          transport: "gateway-relay",
-          consultRouting: null,
-          providerEntries: {},
-        },
-        catalog: {
-          kind: "ready",
-          ready: true,
-          activeProvider: "openai",
-          providers: [
-            {
-              id: "openai",
-              label: "OpenAI",
-              configured: true,
-              aliases: [],
-              models: [model],
-              voices: [],
-              transports: ["gateway-relay"],
-              defaultModel: model,
-            },
-          ],
-        },
-        configBusy: false,
-        onProviderChange: vi.fn(),
-        onModelChange: vi.fn(),
-        onVoiceChange: vi.fn(),
-        editor: html``,
-      }),
-      container,
-    );
+  it.each(["gpt-live-1-codex", "gpt-realtime-2.1"] as const)(
+    "renders catalog auth choices without inferring login from model: %s",
+    (model) => {
+      const container = document.createElement("div");
+      render(
+        renderTalk({
+          selection: {
+            provider: "openai",
+            model,
+            speakerVoice: null,
+            transport: "gateway-relay",
+            consultRouting: null,
+            providerEntries: {},
+          },
+          catalog: {
+            kind: "ready",
+            ready: true,
+            activeProvider: "openai",
+            providers: [
+              {
+                id: "openai",
+                label: "OpenAI",
+                configured: true,
+                aliases: [],
+                models: [model],
+                authMethods: [
+                  { id: "oauth", label: "OAuth only" },
+                  { id: "api-key", label: "API key only" },
+                ],
+                voices: [],
+                transports: ["gateway-relay"],
+                defaultModel: model,
+              },
+            ],
+          },
+          configBusy: false,
+          onProviderChange: vi.fn(),
+          onModelChange: vi.fn(),
+          onVoiceChange: vi.fn(),
+          editor: html``,
+        }),
+        container,
+      );
 
-    expect(container.textContent?.includes(t("talkPage.gptLive.hint"))).toBe(showsHint);
-  });
+      expect(container.textContent).toContain(t("talkPage.auth.description"));
+      expect(container.textContent).toContain("OAuth only");
+      expect(container.textContent).toContain("API key only");
+    },
+  );
 });
 
 describe("TalkSettingsPage realtime transport mutation", () => {

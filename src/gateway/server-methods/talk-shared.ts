@@ -9,6 +9,7 @@ import {
 import { resolveRealtimeBootstrapContextInstructions } from "../../agents/realtime-bootstrap-context.js";
 import type { TalkRealtimeConfig } from "../../config/types.gateway.js";
 import type { OpenClawConfig } from "../../config/types.js";
+import { resolveProviderRawConfig } from "../../plugin-sdk/provider-selection-runtime.js";
 import type { RealtimeVoiceProviderPlugin } from "../../plugins/types.js";
 import {
   getRealtimeTranscriptionProvider,
@@ -243,8 +244,21 @@ export function buildTalkRealtimeConfig(
   const talkRealtimeProviderConfigs = talkRealtime?.providers as
     | Record<string, RealtimeVoiceProviderConfig>
     | undefined;
-  const explicitProvider =
-    normalizeOptionalString(requestedProvider) ?? normalizeOptionalString(talkRealtime?.provider);
+  const savedProvider = normalizeOptionalString(talkRealtime?.provider);
+  if (requestedProvider && savedProvider) {
+    const definition = listRealtimeVoiceProviders(config).find((entry) =>
+      providerMatchesId(entry, savedProvider),
+    );
+    const matches = definition
+      ? providerMatchesId(definition, requestedProvider)
+      : normalizeOptionalLowercaseString(requestedProvider) ===
+        normalizeOptionalLowercaseString(savedProvider);
+    if (!matches)
+      throw new Error(
+        "Talk provider is selected on the Gateway; change Talk settings before starting a new call",
+      );
+  }
+  const explicitProvider = savedProvider ?? normalizeOptionalString(requestedProvider);
   const singleConfiguredProvider = normalizeOptionalString(
     singleRecordKey(talkRealtimeProviderConfigs),
   );
@@ -266,7 +280,30 @@ export function buildTalkRealtimeConfig(
       normalizeOptionalString(requestedModel) ?? normalizeOptionalString(talkRealtime?.model),
   });
   const provider = selectedProvider ?? voiceModelDefault?.provider;
-  const model = normalizeOptionalString(talkRealtime?.model) ?? voiceModelDefault?.model;
+  const selected = listRealtimeVoiceProviders(config).find(
+    (entry) => provider && providerMatchesId(entry, provider),
+  );
+  const providerModel = provider
+    ? normalizeOptionalString(
+        resolveProviderRawConfig({
+          providerConfigs: talkRealtimeProviderConfigs ?? {},
+          providerId: selected?.id ?? provider,
+          providerAliases: selected?.aliases,
+          configuredProviderId: provider,
+        }).model,
+      )
+    : undefined;
+  const savedModel = normalizeOptionalString(talkRealtime?.model) ?? providerModel;
+  const model = savedModel ?? voiceModelDefault?.model;
+  if (
+    normalizeOptionalString(requestedModel) &&
+    savedModel &&
+    normalizeOptionalString(requestedModel) !== savedModel
+  ) {
+    throw new Error(
+      "Talk model is selected on the Gateway; change Talk settings before starting a new call",
+    );
+  }
   return {
     provider,
     providers: providerConfigs,

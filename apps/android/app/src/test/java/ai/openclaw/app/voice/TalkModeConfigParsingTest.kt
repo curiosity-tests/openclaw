@@ -7,9 +7,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
@@ -97,37 +95,25 @@ class TalkModeConfigParsingTest {
   }
 
   @Test
-  fun gatesAndroidRealtimeRelayFromEffectiveModel() {
-    val browserOnly =
-      json
-        .parseToJsonElement(
-          """{"talk":{"realtime":{"model":"gpt-live-future"}}}""",
-        ).jsonObject
-    val relayCapable =
-      json
-        .parseToJsonElement(
-          """{"talk":{"realtime":{"model":"gpt-realtime-2.1"}}}""",
-        ).jsonObject
-
-    assertFalse(TalkModeGatewayConfigParser.parse(browserOnly).realtimeRelayModelSupported)
-    assertTrue(TalkModeGatewayConfigParser.parse(relayCapable).realtimeRelayModelSupported)
+  fun readsGatewayTransportWithoutInferringFromModelNames() {
+    for (model in listOf("gpt-live-1-codex", "gpt-realtime-2.1")) {
+      val config = json.parseToJsonElement("""{"talk":{"realtime":{"model":"$model","transport":"webrtc"}}}""").jsonObject
+      assertEquals("webrtc", TalkModeGatewayConfigParser.parse(config).realtimeTransport)
+      assertNull(TalkModeGatewayConfigParser.parse(config).realtimeMode)
+    }
   }
 
   @Test
-  fun gatesAndroidRealtimeRelayFromProviderLevelModel() {
-    val providerLevelBrowserOnly =
-      json
-        .parseToJsonElement(
-          """{"talk":{"realtime":{"provider":"openai","providers":{"openai":{"model":"gpt-live-1-codex"}}}}}""",
-        ).jsonObject
-    val topLevelWins =
-      json
-        .parseToJsonElement(
-          """{"talk":{"realtime":{"provider":"openai","model":"gpt-realtime-2.1","providers":{"openai":{"model":"gpt-live-1-codex"}}}}}""",
-        ).jsonObject
-
-    assertFalse(TalkModeGatewayConfigParser.parse(providerLevelBrowserOnly).realtimeRelayModelSupported)
-    assertTrue(TalkModeGatewayConfigParser.parse(topLevelWins).realtimeRelayModelSupported)
+  fun selectsOnlySupportedTransportsFromGatewayCapabilities() {
+    fun catalog(transports: String) = json.parseToJsonElement("""{"realtime":{"activeProvider":"example","providers":[{"id":"example","transports":[$transports]}]}}""").jsonObject
+    assertEquals("webrtc", resolveAndroidRealtimeTransport(null, catalog("\"webrtc\",\"gateway-relay\"")))
+    assertEquals("gateway-relay", resolveAndroidRealtimeTransport(null, catalog("\"provider-websocket\",\"gateway-relay\"")))
+    assertEquals("gateway-relay", resolveAndroidRealtimeTransport("provider-websocket", null))
+    assertEquals("gateway-relay", resolveAndroidRealtimeTransport("gateway-relay", null))
+    assertEquals("webrtc", resolveAndroidRealtimeTransport("webrtc", null))
+    assertEquals(true, runCatching { resolveAndroidRealtimeTransport("managed-room", null) }.isFailure)
+    assertEquals(true, runCatching { resolveAndroidRealtimeTransport(null, catalog("\"provider-websocket\"")) }.isFailure)
+    assertEquals(true, runCatching { resolveAndroidRealtimeTransport(null, null) }.isFailure)
   }
 
   @Test

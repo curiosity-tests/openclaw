@@ -503,12 +503,30 @@ class TalkModeManagerTest {
     manager.realtimeEvent("""{"relaySessionId":"relay-1","type":"close","reason":"error"}""")
 
     assertFalse(manager.isEnabled.value)
+    assertTrue(manager.hasFailure.value)
     assertTrue(stoppedByRelay)
     assertEquals(
       "Talk failed: Realtime provider closed unexpectedly.",
       manager.statusText.value,
     )
   }
+
+  @Test
+  fun explicitStopAndNewStartClearTypedFailure() =
+    runTest {
+      val manager = createManager(scope = this)
+      setTalkFailure(manager, verbatimText("Échec de Talk : session refusée."))
+      assertTrue(manager.hasFailure.value)
+      manager.setEnabled(false)
+      assertFalse(manager.hasFailure.value)
+      assertEquals("Off", manager.statusText.value)
+      setTalkFailure(manager, verbatimText("Échec de Talk : session refusée."))
+      manager.setEnabled(true)
+      assertFalse(manager.hasFailure.value)
+      assertEquals("Connecting…", manager.statusText.value)
+      manager.stopAllCapture()
+      advanceUntilIdle()
+    }
 
   @Test
   fun aDeferredTerminalNotificationCannotStopAReplacementTalkStart() {
@@ -812,6 +830,7 @@ class TalkModeManagerTest {
       assertFalse(manager.isEnabled.value)
       assertFalse(manager.isListening.value)
       assertEquals("Gateway not connected", manager.statusText.value)
+      assertTrue(manager.hasFailure.value)
       assertTrue(stoppedByRelay.get())
     }
 
@@ -994,7 +1013,7 @@ class TalkModeManagerTest {
             "talk",
             buildJsonObject {
               put("speechLocale", locale)
-              put("realtime", buildJsonObject { put("model", "gpt-live") })
+              put("realtime", buildJsonObject { put("mode", "stt-tts") })
               interrupt?.let { put("interruptOnSpeech", it) }
             },
           )
@@ -1248,7 +1267,7 @@ class TalkModeManagerTest {
       responseForRequest = { request, _ ->
         when (request.getValue("method").jsonPrimitive.content) {
           "talk.config" -> {
-            """{"config":{"talk":{"realtime":{"model":"gpt-live"},"silenceTimeoutMs":800}}}"""
+            """{"config":{"talk":{"realtime":{"mode":"stt-tts"},"silenceTimeoutMs":800}}}"""
           }
 
           "talk.session.create" -> {
@@ -2618,7 +2637,7 @@ class TalkModeManagerTest {
                 val payload =
                   responseForRequest(request, webSocket) ?: when (request.getValue("method").jsonPrimitive.content) {
                     "connect" -> """{"snapshot":{"sessionDefaults":{"mainSessionKey":"main"}}}"""
-                    "talk.config" -> """{"config":{}}"""
+                    "talk.config" -> """{"config":{"talk":{"realtime":{"transport":"gateway-relay"}}}}"""
                     "talk.session.create" -> """{"relaySessionId":"playback-relay"}"""
                     else -> "{}"
                   }

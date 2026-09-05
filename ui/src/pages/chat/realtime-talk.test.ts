@@ -54,6 +54,42 @@ function transportContext(transport: object | undefined): RealtimeTalkTransportC
 useRealtimeTalkMicrophoneFixture();
 
 describe("RealtimeTalkSession", () => {
+  it.each([
+    { model: "gpt-live-1-codex", authMethod: "oauth" },
+    { model: "gpt-realtime-2.1", authMethod: "api-key" },
+  ])(
+    "displays confirmed $model/$authMethod identity only for its active call",
+    async ({ model, authMethod }) => {
+      const ready = createDeferred<"ready">();
+      webRtcStart.mockImplementationOnce(() => ready.promise);
+      const payload = {
+        provider: "openai",
+        model,
+        authMethod,
+        voice: "test-voice",
+        transport: "webrtc",
+        voiceSessionId: "identity-call",
+        clientSecret: "do-not-display-ephemeral",
+      };
+      const request = vi.fn(async () => payload);
+      const session = new RealtimeTalkSession({ request } as never, "main");
+      const starting = session.start();
+      await vi.waitFor(() => expect(webRtcInstances).toHaveLength(1));
+      expect(session.activeIdentity).toBeNull();
+      ready.resolve("ready");
+      await starting;
+      expect(session.activeIdentity).toContain(model);
+      expect(session.activeIdentity).toContain(authMethod);
+      expect(session.activeIdentity).toContain("test-voice");
+      expect(session.activeIdentity).toContain("webrtc");
+      expect(session.activeIdentity).not.toContain(payload.clientSecret);
+      payload.model = "next-call-model";
+      expect(session.activeIdentity).toContain(model);
+      session.stop();
+      expect(session.activeIdentity).toBeNull();
+    },
+  );
+
   beforeEach(() => {
     googleStart.mockClear();
     googleStop.mockClear();
@@ -804,7 +840,7 @@ describe("RealtimeTalkSession", () => {
     expect(relayStart).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to Gateway relay when a successful config read resolves Auto", async () => {
+  it("does not replace a failed client-owned call with an implicit relay", async () => {
     const request = vi.fn(async (method: string) => {
       if (method === "talk.client.create") {
         throw new Error("browser session unavailable");
@@ -829,20 +865,9 @@ describe("RealtimeTalkSession", () => {
     });
     const session = new RealtimeTalkSession({ request } as never, "main");
 
-    await session.start();
-
-    expect(request).toHaveBeenNthCalledWith(
-      3,
-      "talk.session.create",
-      {
-        sessionKey: "main",
-        mode: "realtime",
-        transport: "gateway-relay",
-        brain: "agent-consult",
-      },
-      requestTimeoutOptions,
-    );
-    expect(relayInstances).toHaveLength(1);
+    await expect(session.start()).rejects.toThrow("browser session unavailable");
+    expect(request.mock.calls.map(([method]) => method)).not.toContain("talk.session.create");
+    expect(relayInstances).toHaveLength(0);
   });
 
   it("does not fall back when the effective config cannot be read", async () => {
