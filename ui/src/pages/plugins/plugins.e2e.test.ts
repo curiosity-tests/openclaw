@@ -456,7 +456,12 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
         .toBeLessThanOrEqual(1);
       await page.setViewportSize(desktopViewport);
       await page.evaluate(
-        () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+        () =>
+          new Promise((resolve) => {
+            requestAnimationFrame(() => {
+              requestAnimationFrame(resolve);
+            });
+          }),
       );
       await captureScreenshot(page, "12-installed-plugins-desktop.png");
 
@@ -530,7 +535,12 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
             .evaluate((element) => element === document.activeElement),
         )
         .toBe(true);
-      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+      await page.evaluate(
+        () =>
+          new Promise((resolve) => {
+            requestAnimationFrame(resolve);
+          }),
+      );
       const settingsAfterSearch = await settingsButton.boundingBox();
       expect(Math.abs((settingsAfterSearch?.x ?? 0) - (settingsBeforeSearch?.x ?? 0))).toBeLessThan(
         1,

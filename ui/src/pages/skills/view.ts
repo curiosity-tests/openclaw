@@ -279,25 +279,31 @@ export function renderSkills(props: SkillsProps) {
     ${renderSettingsPage(
       html`
         ${props.library ?? nothing}
-        ${props.showInventory === false
-          ? nothing
-          : renderSkillsToolbar(props, statusCounts, filtered.length)}
-        ${props.error
-          ? html`<div class="callout danger oc-banner oc-banner-error" role="alert">
-              ${props.error}
-            </div>`
-          : nothing}
+        ${
+          props.showInventory === false
+            ? nothing
+            : renderSkillsToolbar(props, statusCounts, filtered.length)
+        }
+        ${
+          props.error
+            ? html`<div class="callout danger oc-banner oc-banner-error" role="alert">
+                ${props.error}
+              </div>`
+            : nothing
+        }
         ${renderClawHubSection(props)}
-        ${props.showInventory === false
-          ? nothing
-          : filtered.length === 0
-            ? renderSettingsEmpty(
-                !props.connected && !props.report
-                  ? t("skillsPage.disconnected")
-                  : t("skillsPage.empty"),
-                { carapace: true },
-              )
-            : groups.map((group) => renderSkillGroup(group, props))}
+        ${
+          props.showInventory === false
+            ? nothing
+            : filtered.length === 0
+              ? renderSettingsEmpty(
+                  !props.connected && !props.report
+                    ? t("skillsPage.disconnected")
+                    : t("skillsPage.empty"),
+                  { carapace: true },
+                )
+              : groups.map((group) => renderSkillGroup(group, props))
+        }
       `,
       { wide: true, carapace: true },
     )}
@@ -352,32 +358,34 @@ function renderSkillsToolbar(
         onChange: (value) => props.onStatusFilterChange(value),
         carapace: true,
       })}
-      ${agents.length > 1
-        ? html`
-            <div class="plugins-field skills-toolbar__agent">
-              <span>${t("usage.filters.agent")}</span>
-              <openclaw-agent-select
-                class="agent-select--settings"
-                name="skills-agent"
-                .options=${agents.map((agent) => {
-                  const label = normalizeAgentLabel(agent);
-                  return {
-                    value: agent.id,
-                    label:
-                      agent.id === props.agentsList?.defaultId
-                        ? t("skillsPage.defaultAgent", { name: label })
-                        : label,
-                    agent,
-                  };
-                })}
-                .value=${selectedAgentId}
-                .accessibleLabel=${t("usage.filters.agent")}
-                .disabled=${skillControlsLocked(props) || !props.connected}
-                .onSelect=${props.onAgentChange}
-              ></openclaw-agent-select>
-            </div>
-          `
-        : nothing}
+      ${
+        agents.length > 1
+          ? html`
+              <div class="plugins-field skills-toolbar__agent">
+                <span>${t("usage.filters.agent")}</span>
+                <openclaw-agent-select
+                  class="agent-select--settings"
+                  name="skills-agent"
+                  .options=${agents.map((agent) => {
+                    const label = normalizeAgentLabel(agent);
+                    return {
+                      value: agent.id,
+                      label:
+                        agent.id === props.agentsList?.defaultId
+                          ? t("skillsPage.defaultAgent", { name: label })
+                          : label,
+                      agent,
+                    };
+                  })}
+                  .value=${selectedAgentId}
+                  .accessibleLabel=${t("usage.filters.agent")}
+                  .disabled=${skillControlsLocked(props) || !props.connected}
+                  .onSelect=${props.onAgentChange}
+                ></openclaw-agent-select>
+              </div>
+            `
+          : nothing
+      }
       <label class="plugins-field skills-toolbar__search">
         <span>${t("common.search")}</span>
         <input
@@ -421,31 +429,38 @@ function renderClawHubSection(props: SkillsProps) {
           autocomplete="off"
           name="clawhub-search"
         />
-        ${props.clawhubSearchLoading
-          ? html`<span class="plugins-toolbar__hint">${t("skillsPage.searching")}</span>`
-          : nothing}
+        ${
+          props.clawhubSearchLoading
+            ? html`<span class="plugins-toolbar__hint">${t("skillsPage.searching")}</span>`
+            : nothing
+        }
       </div>
-      ${props.clawhubSearchError
-        ? html`<div class="callout danger plugins-group-message oc-banner oc-banner-error">
-            ${props.clawhubSearchError}
-          </div>`
-        : nothing}
-      ${props.clawhubInstallMessage
-        ? html`<div
-            class="callout ${props.clawhubInstallMessage.kind === "error"
-              ? "danger"
-              : "success"} plugins-group-message oc-banner ${props.clawhubInstallMessage.kind ===
-            "error"
-              ? "oc-banner-error"
-              : "oc-banner-success"}"
-          >
-            <div
-              style="max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word;"
+      ${
+        props.clawhubSearchError
+          ? html`<div class="callout danger plugins-group-message oc-banner oc-banner-error">
+              ${props.clawhubSearchError}
+            </div>`
+          : nothing
+      }
+      ${
+        props.clawhubInstallMessage
+          ? html`<div
+              class="callout ${
+                props.clawhubInstallMessage.kind === "error" ? "danger" : "success"
+              } plugins-group-message oc-banner ${
+                props.clawhubInstallMessage.kind === "error"
+                  ? "oc-banner-error"
+                  : "oc-banner-success"
+              }"
             >
-              ${props.clawhubInstallMessage.text}
-            </div>
-          </div>`
-        : nothing}
+              <div
+                style="max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word;"
+              >
+                ${props.clawhubInstallMessage.text}
+              </div>
+            </div>`
+          : nothing
+      }
       ${renderClawHubResults(props)}
     `,
   );
@@ -471,9 +486,11 @@ function renderClawHubResults(props: SkillsProps) {
       const installed = installedClawHubSearchResult(props, r);
       const trustSuffix = r.trustState ? ` · ${t("skillsPage.notScannedByClawHub")}` : "";
       const rowCopy = html`
-        ${iconUrl
-          ? html`<img class="clawhub-skill-icon" src=${iconUrl} alt="" loading="lazy" />`
-          : nothing}
+        ${
+          iconUrl
+            ? html`<img class="clawhub-skill-icon" src=${iconUrl} alt="" loading="lazy" />`
+            : nothing
+        }
         <span class="clawhub-skill-result__copy">
           <span class="settings-row__title oc-settings-row-title">${r.displayName}</span>
           <span class="settings-row__desc oc-settings-row-description">
@@ -483,24 +500,26 @@ function renderClawHubResults(props: SkillsProps) {
       `;
       return html`
         <div
-          class="settings-row plugins-item oc-settings-row ${detailRef
-            ? "plugins-item--clickable"
-            : ""}"
+          class="settings-row plugins-item oc-settings-row ${
+            detailRef ? "plugins-item--clickable" : ""
+          }"
         >
-          ${detailRef
-            ? html`<button
-                type="button"
-                class="settings-row__text plugins-item__detail-button clawhub-skill-result__button oc-settings-row-content"
-                aria-label=${t("skillsPage.openDetails", { name: detailRef })}
-                @click=${() => props.onClawHubDetailOpen(detailRef)}
-              >
-                ${rowCopy}
-              </button>`
-            : html`<div
-                class="settings-row__text clawhub-skill-result__button oc-settings-row-content"
-              >
-                ${rowCopy}
-              </div>`}
+          ${
+            detailRef
+              ? html`<button
+                  type="button"
+                  class="settings-row__text plugins-item__detail-button clawhub-skill-result__button oc-settings-row-content"
+                  aria-label=${t("skillsPage.openDetails", { name: detailRef })}
+                  @click=${() => props.onClawHubDetailOpen(detailRef)}
+                >
+                  ${rowCopy}
+                </button>`
+              : html`<div
+                  class="settings-row__text clawhub-skill-result__button oc-settings-row-content"
+                >
+                  ${rowCopy}
+                </div>`
+          }
           <div class="settings-row__control oc-settings-row-control">
             ${r.version ? renderSettingsValue(`v${r.version}`) : nothing}
             <button
@@ -512,11 +531,13 @@ function renderClawHubResults(props: SkillsProps) {
                 }
               }}
             >
-              ${installed
-                ? t("skillsPage.installed")
-                : activeClawHubMutation(props, ref)
-                  ? t("skillsPage.installing")
-                  : t(props.personalImport ? "skillLibrary.import" : "skillsPage.install")}
+              ${
+                installed
+                  ? t("skillsPage.installed")
+                  : activeClawHubMutation(props, ref)
+                    ? t("skillsPage.installing")
+                    : t(props.personalImport ? "skillLibrary.import" : "skillsPage.install")
+              }
             </button>
           </div>
         </div>
@@ -538,22 +559,25 @@ function renderClawHubDetailDialog(props: SkillsProps) {
       @modal-cancel=${props.onClawHubDetailClose}
     >
       <div
-        class="md-preview-dialog__panel oc-card ${props.clawhubDetailError &&
-        !props.clawhubDetailLoading
-          ? "md-preview-dialog__panel--message-only"
-          : ""}"
+        class="md-preview-dialog__panel oc-card ${
+          props.clawhubDetailError && !props.clawhubDetailLoading
+            ? "md-preview-dialog__panel--message-only"
+            : ""
+        }"
       >
         <div class="md-preview-dialog__header">
           <div class="clawhub-skill-detail__identity">
-            ${detailImageUrl
-              ? html`<img
-                  class="clawhub-skill-icon clawhub-skill-icon--detail ${profileImageUrl
-                    ? "clawhub-skill-icon--profile"
-                    : ""}"
-                  src=${detailImageUrl}
-                  alt=""
-                />`
-              : nothing}
+            ${
+              detailImageUrl
+                ? html`<img
+                    class="clawhub-skill-icon clawhub-skill-icon--detail ${
+                      profileImageUrl ? "clawhub-skill-icon--profile" : ""
+                    }"
+                    src=${detailImageUrl}
+                    alt=""
+                  />`
+                : nothing
+            }
             <div class="md-preview-dialog__title">
               ${detail?.skill?.displayName ?? props.clawhubDetailRef}
             </div>
@@ -566,59 +590,71 @@ function renderClawHubDetailDialog(props: SkillsProps) {
           </button>
         </div>
         <div class="md-preview-dialog__body" style="display: grid; gap: 16px;">
-          ${props.clawhubDetailLoading
-            ? html`<div class="muted">${t("common.loading")}</div>`
-            : props.clawhubDetailError
-              ? html`<div class="callout danger oc-banner oc-banner-error">
-                  ${props.clawhubDetailError}
-                </div>`
-              : detail?.skill
-                ? html`
-                    <div style="font-size: 14px; line-height: 1.5;">
-                      ${detail.skill.summary ?? ""}
-                    </div>
-                    ${detail.owner?.displayName
-                      ? html`<div class="muted" style="font-size: 13px;">
-                          ${t("skillsPage.by")}
-                          ${detail.owner.displayName}${detail.owner.handle
-                            ? html` (@${detail.owner.handle})`
-                            : nothing}
-                        </div>`
-                      : nothing}
-                    ${detail.latestVersion
-                      ? html`<div class="muted" style="font-size: 13px;">
-                          ${t("skillsPage.latest", { version: detail.latestVersion.version })}
-                        </div>`
-                      : nothing}
-                    ${detail.latestVersion?.changelog
-                      ? html`<div
-                          style="font-size: 13px; border-top: 1px solid var(--border); padding-top: 12px; white-space: pre-wrap;"
-                        >
-                          ${detail.latestVersion.changelog}
-                        </div>`
-                      : nothing}
-                    ${detail.metadata?.os
-                      ? html`<div class="muted" style="font-size: 12px;">
-                          ${t("skillsPage.platforms", { platforms: detail.metadata.os.join(", ") })}
-                        </div>`
-                      : nothing}
-                    <button
-                      class="btn primary oc-action oc-action-primary"
-                      ?disabled=${skillInstallLocked(props)}
-                      @click=${() => {
-                        if (props.clawhubDetailRef) {
-                          props.onClawHubInstall(props.clawhubDetailRef);
+          ${
+            props.clawhubDetailLoading
+              ? html`<div class="muted">${t("common.loading")}</div>`
+              : props.clawhubDetailError
+                ? html`<div class="callout danger oc-banner oc-banner-error">
+                    ${props.clawhubDetailError}
+                  </div>`
+                : detail?.skill
+                  ? html`
+                      <div style="font-size: 14px; line-height: 1.5;">
+                        ${detail.skill.summary ?? ""}
+                      </div>
+                      ${
+                        detail.owner?.displayName
+                          ? html`<div class="muted" style="font-size: 13px;">
+                              ${t("skillsPage.by")}
+                              ${detail.owner.displayName}${
+                                detail.owner.handle ? html` (@${detail.owner.handle})` : nothing
+                              }
+                            </div>`
+                          : nothing
+                      }
+                      ${
+                        detail.latestVersion
+                          ? html`<div class="muted" style="font-size: 13px;">
+                              ${t("skillsPage.latest", { version: detail.latestVersion.version })}
+                            </div>`
+                          : nothing
+                      }
+                      ${
+                        detail.latestVersion?.changelog
+                          ? html`<div
+                              style="font-size: 13px; border-top: 1px solid var(--border); padding-top: 12px; white-space: pre-wrap;"
+                            >
+                              ${detail.latestVersion.changelog}
+                            </div>`
+                          : nothing
+                      }
+                      ${
+                        detail.metadata?.os
+                          ? html`<div class="muted" style="font-size: 12px;">
+                              ${t("skillsPage.platforms", { platforms: detail.metadata.os.join(", ") })}
+                            </div>`
+                          : nothing
+                      }
+                      <button
+                        class="btn primary oc-action oc-action-primary"
+                        ?disabled=${skillInstallLocked(props)}
+                        @click=${() => {
+                          if (props.clawhubDetailRef) {
+                            props.onClawHubInstall(props.clawhubDetailRef);
+                          }
+                        }}
+                      >
+                        ${
+                          activeClawHubMutation(props, props.clawhubDetailRef ?? "")
+                            ? t("skillsPage.installing")
+                            : props.personalImport
+                              ? t("skillLibrary.import")
+                              : t("skillsPage.installNamed", { name: detail.skill.displayName })
                         }
-                      }}
-                    >
-                      ${activeClawHubMutation(props, props.clawhubDetailRef ?? "")
-                        ? t("skillsPage.installing")
-                        : props.personalImport
-                          ? t("skillLibrary.import")
-                          : t("skillsPage.installNamed", { name: detail.skill.displayName })}
-                    </button>
-                  `
-                : html`<div class="muted">${t("skillsPage.notFound")}</div>`}
+                      </button>
+                    `
+                  : html`<div class="muted">${t("skillsPage.notFound")}</div>`
+          }
         </div>
       </div>
     </openclaw-modal-dialog>
@@ -646,18 +682,20 @@ function renderSkill(skill: SkillStatusEntry, props: SkillsProps) {
       </button>
       <div class="settings-row__control oc-settings-row-control">
         ${skillAvailabilityStatus(skill)}
-        ${skill.clawhub?.status === "linked"
-          ? renderSettingsStatus({
-              ...verdictStatus(verdict, props.clawhubVerdictsLoading),
-              carapace: true,
-            })
-          : skill.clawhub?.status === "invalid"
+        ${
+          skill.clawhub?.status === "linked"
             ? renderSettingsStatus({
-                kind: "warn",
-                label: t("skillsPage.invalidLink"),
+                ...verdictStatus(verdict, props.clawhubVerdictsLoading),
                 carapace: true,
               })
-            : nothing}
+            : skill.clawhub?.status === "invalid"
+              ? renderSettingsStatus({
+                  kind: "warn",
+                  label: t("skillsPage.invalidLink"),
+                  carapace: true,
+                })
+              : nothing
+        }
         ${renderSettingsToggle({
           checked: !skill.disabled,
           disabled: locked,
@@ -715,56 +753,64 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
             ${renderSkillStatusChips({ skill, showBundledBadge })}
           </div>
 
-          ${skill.clawhub || skill.skillCard?.present
-            ? html`
-                ${renderHubTabs({
-                  id: "skill-detail",
-                  active: detailTab,
-                  tabs: [
-                    { value: "overview", label: t("skillsPage.overview") },
-                    ...(skill.skillCard?.present
-                      ? [{ value: "card" as const, label: t("skillsPage.skillCard") }]
-                      : []),
-                  ],
-                  ariaLabel: skill.name,
-                  panelId: "skill-detail-panel",
-                  variant: "sub",
-                  carapace: true,
-                  onSelect: props.onDetailTabChange,
-                })}
-              `
-            : nothing}
+          ${
+            skill.clawhub || skill.skillCard?.present
+              ? html`
+                  ${renderHubTabs({
+                    id: "skill-detail",
+                    active: detailTab,
+                    tabs: [
+                      { value: "overview", label: t("skillsPage.overview") },
+                      ...(skill.skillCard?.present
+                        ? [{ value: "card" as const, label: t("skillsPage.skillCard") }]
+                        : []),
+                    ],
+                    ariaLabel: skill.name,
+                    panelId: "skill-detail-panel",
+                    variant: "sub",
+                    carapace: true,
+                    onSelect: props.onDetailTabChange,
+                  })}
+                `
+              : nothing
+          }
           <div
             id="skill-detail-panel"
             role=${skill.clawhub || skill.skillCard?.present ? "tabpanel" : nothing}
-            aria-labelledby=${skill.clawhub || skill.skillCard?.present
-              ? `skill-detail-tab-${detailTab}`
-              : nothing}
+            aria-labelledby=${
+              skill.clawhub || skill.skillCard?.present ? `skill-detail-tab-${detailTab}` : nothing
+            }
           >
-            ${detailTab === "overview"
-              ? renderInstalledClawHubOverview(skill, props, verdict)
-              : renderInstalledSkillCard(skill, props)}
+            ${
+              detailTab === "overview"
+                ? renderInstalledClawHubOverview(skill, props, verdict)
+                : renderInstalledSkillCard(skill, props)
+            }
           </div>
-          ${missing.length > 0
-            ? html`
-                <div
-                  class="callout oc-banner oc-banner-warning"
-                  style="border-color: var(--warn-subtle); background: var(--warn-subtle); color: var(--warn);"
-                >
-                  <div style="font-weight: 600; margin-bottom: 4px;">
-                    ${t("skillsPage.missingRequirements")}
+          ${
+            missing.length > 0
+              ? html`
+                  <div
+                    class="callout oc-banner oc-banner-warning"
+                    style="border-color: var(--warn-subtle); background: var(--warn-subtle); color: var(--warn);"
+                  >
+                    <div style="font-weight: 600; margin-bottom: 4px;">
+                      ${t("skillsPage.missingRequirements")}
+                    </div>
+                    <div>${missing.join(", ")}</div>
                   </div>
-                  <div>${missing.join(", ")}</div>
-                </div>
-              `
-            : nothing}
-          ${reasons.length > 0
-            ? html`
-                <div class="muted" style="font-size: 13px;">
-                  ${t("skillsPage.reason", { reasons: reasons.join(", ") })}
-                </div>
-              `
-            : nothing}
+                `
+              : nothing
+          }
+          ${
+            reasons.length > 0
+              ? html`
+                  <div class="muted" style="font-size: 13px;">
+                    ${t("skillsPage.reason", { reasons: reasons.join(", ") })}
+                  </div>
+                `
+              : nothing
+          }
 
           <div style="display: flex; align-items: center; gap: 12px;">
             ${renderSettingsToggle({
@@ -776,68 +822,77 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
             <span style="font-size: 13px; font-weight: 500;">
               ${skill.disabled ? t("skillsPage.disabled") : t("skillsPage.enabled")}
             </span>
-            ${installOption
-              ? html`<button
-                  class="btn oc-action oc-action-secondary"
-                  ?disabled=${installLocked}
-                  @click=${() =>
-                    installOption && props.onInstall(skill.skillKey, skill.name, installOption.id)}
-                >
-                  ${active ? t("skillsPage.installing") : installOption?.label}
-                </button>`
-              : nothing}
+            ${
+              installOption
+                ? html`<button
+                    class="btn oc-action oc-action-secondary"
+                    ?disabled=${installLocked}
+                    @click=${() =>
+                      installOption &&
+                      props.onInstall(skill.skillKey, skill.name, installOption.id)}
+                  >
+                    ${active ? t("skillsPage.installing") : installOption?.label}
+                  </button>`
+                : nothing
+            }
           </div>
 
-          ${message
-            ? html`<div
-                class="callout ${message.kind === "error"
-                  ? "danger oc-banner-error"
-                  : "success oc-banner-success"} oc-banner"
-              >
-                ${formatUiExternalText(message.message)}
-              </div>`
-            : nothing}
-          ${skill.primaryEnv
-            ? html`
-                <div style="display: grid; gap: 8px;">
-                  <div class="field">
-                    <span
-                      >${t("skillsPage.apiKey")}
-                      <span class="muted" style="font-weight: normal; font-size: 0.88em;"
-                        >(${skill.primaryEnv})</span
-                      ></span
+          ${
+            message
+              ? html`<div
+                  class="callout ${
+                    message.kind === "error"
+                      ? "danger oc-banner-error"
+                      : "success oc-banner-success"
+                  } oc-banner"
+                >
+                  ${formatUiExternalText(message.message)}
+                </div>`
+              : nothing
+          }
+          ${
+            skill.primaryEnv
+              ? html`
+                  <div style="display: grid; gap: 8px;">
+                    <div class="field">
+                      <span
+                        >${t("skillsPage.apiKey")}
+                        <span class="muted" style="font-weight: normal; font-size: 0.88em;"
+                          >(${skill.primaryEnv})</span
+                        ></span
+                      >
+                      <input
+                        class="oc-input"
+                        type="password"
+                        required
+                        ?disabled=${updateLocked}
+                        .value=${editValue}
+                        @input=${(e: Event) =>
+                          props.onEdit(skill.skillKey, (e.target as HTMLInputElement).value)}
+                      />
+                    </div>
+                    ${(() => {
+                      const href = safeExternalHref(skill.homepage);
+                      return href
+                        ? html`<div class="muted" style="font-size: 13px;">
+                            ${t("skillsPage.getKey")}
+                            <a href="${href}" target="_blank" rel="noopener noreferrer"
+                              >${skill.homepage}</a
+                            >
+                          </div>`
+                        : nothing;
+                    })()}
+                    <button
+                      class="btn primary oc-action oc-action-primary"
+                      ?disabled=${updateLocked || !editValue.trim()}
+                      @click=${() => props.onSaveKey(skill.skillKey)}
                     >
-                    <input
-                      class="oc-input"
-                      type="password"
-                      required
-                      ?disabled=${updateLocked}
-                      .value=${editValue}
-                      @input=${(e: Event) =>
-                        props.onEdit(skill.skillKey, (e.target as HTMLInputElement).value)}
-                    />
+                      ${t("skillsPage.saveKey")}
+                    </button>
                   </div>
-                  ${(() => {
-                    const href = safeExternalHref(skill.homepage);
-                    return href
-                      ? html`<div class="muted" style="font-size: 13px;">
-                          ${t("skillsPage.getKey")}
-                          <a href="${href}" target="_blank" rel="noopener noreferrer"
-                            >${skill.homepage}</a
-                          >
-                        </div>`
-                      : nothing;
-                  })()}
-                  <button
-                    class="btn primary oc-action oc-action-primary"
-                    ?disabled=${updateLocked || !editValue.trim()}
-                    @click=${() => props.onSaveKey(skill.skillKey)}
-                  >
-                    ${t("skillsPage.saveKey")}
-                  </button>
-                </div>
-              `
-            : nothing}
+                `
+              : nothing
+          }
 
           <div
             style="border-top: 1px solid var(--border); padding-top: 12px; display: grid; gap: 6px; font-size: 12px; color: var(--muted);"
@@ -892,22 +947,28 @@ function renderInstalledClawHubOverview(
       <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
         <span class="chip ${status.chipClass}">${status.label}</span>
         <span class="muted" style="font-size: 12px;">${installedRef}</span>
-        ${props.clawhubVerdictsLoading && verdict
-          ? html`<span class="muted">${t("skillsPage.refreshing")}</span>`
-          : nothing}
+        ${
+          props.clawhubVerdictsLoading && verdict
+            ? html`<span class="muted">${t("skillsPage.refreshing")}</span>`
+            : nothing
+        }
       </div>
-      ${props.clawhubVerdictsError
-        ? html`<div class="muted" style="font-size: 13px;">${props.clawhubVerdictsError}</div>`
-        : reasonText
-          ? html`<div class="muted" style="font-size: 13px;">${reasonText}</div>`
-          : nothing}
-      ${auditHref
-        ? html`<div style="font-size: 13px;">
-            <a href="${auditHref}" target="_blank" rel="noopener noreferrer"
-              >${t("skillsPage.fullSecurityReport")}</a
-            >
-          </div>`
-        : nothing}
+      ${
+        props.clawhubVerdictsError
+          ? html`<div class="muted" style="font-size: 13px;">${props.clawhubVerdictsError}</div>`
+          : reasonText
+            ? html`<div class="muted" style="font-size: 13px;">${reasonText}</div>`
+            : nothing
+      }
+      ${
+        auditHref
+          ? html`<div style="font-size: 13px;">
+              <a href="${auditHref}" target="_blank" rel="noopener noreferrer"
+                >${t("skillsPage.fullSecurityReport")}</a
+              >
+            </div>`
+          : nothing
+      }
     </div>
   `;
 }
@@ -924,9 +985,11 @@ function renderInstalledSkillCard(skill: SkillStatusEntry, props: SkillsProps) {
       return html`<div class="callout danger oc-banner oc-banner-error">${error}</div>`;
     }
     return html`<div class="muted" style="font-size: 13px;">
-      ${props.skillCardLoadingKey === skill.skillKey
-        ? t("skillsPage.loadingSkillCard")
-        : t("skillsPage.skillCardNotLoaded")}
+      ${
+        props.skillCardLoadingKey === skill.skillKey
+          ? t("skillsPage.loadingSkillCard")
+          : t("skillsPage.skillCardNotLoaded")
+      }
     </div>`;
   }
   return html`
