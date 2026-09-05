@@ -115,6 +115,8 @@ const requiredPathGroups = [
   "scripts/lib/package-dist-imports.mjs",
   "scripts/postinstall-bundled-plugins.mjs",
   "dist/agents/compaction-planning.worker.js",
+  "dist/config/sessions/session-model-context.worker.js",
+  "dist/config/sessions/disk-budget.worker.js",
   "dist/agents/model-provider-auth.worker.js",
   "dist/agents/prepared-model-catalog.worker.js",
   "dist/extensions/memory-core/memory-search-knn.child.js",
@@ -767,6 +769,10 @@ export function createPackedPluginSdkTypescriptSmokeProject(params: {
 }): void {
   const dependencies: Record<string, string> = {
     openclaw: params.packageSpec,
+    // Strict declaration checking needs the release-declared ws types; without
+    // them skipLibCheck:false reports TS7016 before the __exportAll TS2304.
+    "@types/ws": "8.18.1",
+    typescript: "6.0.3",
   };
   if (params.aiPackageSpec) {
     dependencies["@openclaw/ai"] = params.aiPackageSpec;
@@ -795,7 +801,7 @@ export function createPackedPluginSdkTypescriptSmokeProject(params: {
           moduleResolution: "NodeNext",
           noEmit: true,
           strict: true,
-          skipLibCheck: true,
+          skipLibCheck: false,
           target: "ES2022",
         },
         include: ["src/index.ts"],
