@@ -874,6 +874,16 @@ describeControlUiE2e("Control UI Plugins mocked Gateway E2E", () => {
         "https://clawhub.ai/openclaw/plugins/matrix",
       );
       expect(await page.getByRole("tab", { name: "Plugins", exact: true }).count()).toBe(0);
+      expect(
+        await page.getByRole("button", { name: "Install", exact: true }).evaluate((button) => {
+          const probe = document.createElement("span");
+          probe.style.background = "var(--primary)";
+          document.body.append(probe);
+          const expected = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          return getComputedStyle(button).backgroundColor === expected;
+        }),
+      ).toBe(true);
 
       await detailTabs.getByRole("tab", { name: "Versions" }).click();
       expect(await page.getByText("2.1.0", { exact: true }).count()).toBe(1);
