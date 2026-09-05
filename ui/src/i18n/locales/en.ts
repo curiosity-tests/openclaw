@@ -5619,6 +5619,7 @@ export const en: TranslationMap & {
       voiceTranscript: "Voice transcript",
     },
     attachments: {
+      allowImage: "Allow image",
       attachedFile: "Attached file",
       audio: "Audio",
       expand: "Open {filename} in the side panel",

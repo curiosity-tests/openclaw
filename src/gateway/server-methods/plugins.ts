@@ -1,10 +1,7 @@
-// Gateway control-plane handlers for cold plugin catalog and lifecycle operations.
-import { buildCapabilityConsentErrorDetails } from "../../../packages/gateway-protocol/src/capability-consent-error-details.js";
+// Gateway handlers for plugin inventory, metadata refresh and catalog search.
 import {
-  buildClawHubTrustErrorDetails,
   ErrorCodes,
   errorShape,
-  isClawHubTrustErrorCode,
   validatePluginsInspectParams,
   validatePluginsCatalogBrowseParams,
   validatePluginsCatalogCategoriesParams,
@@ -13,8 +10,6 @@ import {
   validatePluginsListParams,
   validatePluginsRefreshParams,
   validatePluginsSearchParams,
-  validatePluginsSetEnabledParams,
-  validatePluginsUninstallParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import {
   INSTALL_POLICY_WARNING_ACKNOWLEDGEMENT_REQUIRED,
@@ -36,27 +31,12 @@ import { searchInstallablePluginPackages } from "../../plugins/catalog-search.js
 import { ManagedPluginLifecycleError } from "../../plugins/management-lifecycle-error.js";
 import {
   inspectManagedPlugin,
-  installManagedPlugin,
   listManagedPlugins,
   refreshManagedPluginMetadata,
-  setManagedPluginEnabled,
-  uninstallManagedPlugin,
 } from "../../plugins/management-service.js";
-import { buildGatewayReloadPlan } from "../config-reload-plan.js";
-import { resolveGatewayReloadSettings } from "../config-reload-settings.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { assertValidParams } from "./validation.js";
 
-function pluginPolicyRestartRequired(params: {
-  config: OpenClawConfig;
-  changedPaths: readonly string[];
-}): boolean {
-  const plan = buildGatewayReloadPlan([...params.changedPaths]);
-  const mode = resolveGatewayReloadSettings(params.config).mode;
-  return plan.restartGateway || mode === "off";
-}
-
-/** Gateway handlers for plugin inventory, ClawHub search, install, and policy state. */
 export const pluginsHandlers: GatewayRequestHandlers = {
   "plugins.refresh": async ({ params, respond, context }) => {
     if (!assertValidParams(params, validatePluginsRefreshParams, "plugins.refresh", respond)) {
