@@ -230,7 +230,8 @@ The test toolchain pins stable Vitest `5.0.0`, including its browser and coverag
 packages. Use `describe(name, { concurrent: false }, callback)` for ordered
 suites. Await asynchronous assertions, keep `vi.mock`/`vi.hoisted` at module
 scope, and perform actions whose mock calls you assert inside the test:
-Vitest clears mock history before each test, including calls from `beforeAll`.
+OpenClaw sets `clearMocks: false`, so setup and `beforeAll` calls are preserved.
+Perform and clear or reset each assertion's owned mock actions explicitly as needed.
 Name patterns spanning suites use `suite > test`; native JSON retains its
 space-joined `fullName`, so evidence readers match `ancestorTitles` plus `title`.
 
