@@ -35,6 +35,7 @@ import {
   joinLocalPluginDetail,
   resolvePluginDiscoveryIdentity,
 } from "../../plugins/catalog-discovery.js";
+import { registerClawHubCatalogIconUrls } from "../../plugins/catalog-icon-registry.js";
 import { searchInstallablePluginPackages } from "../../plugins/catalog-search.js";
 import { ManagedPluginLifecycleError } from "../../plugins/management-lifecycle-error.js";
 import {
@@ -217,19 +218,21 @@ export const pluginsHandlers: GatewayRequestHandlers = {
                 cursor: params.cursor,
                 limit: params.pageSize ?? 20,
               });
+        const items = joinClawHubPluginCatalog({
+          remote: remote.items,
+          published,
+          local,
+          includeBundledOnly: canIncludeBundledOnly,
+          intent: params.intent,
+          category: params.category,
+          query: params.query,
+          cursor: params.cursor,
+        });
+        registerClawHubCatalogIconUrls(items.map((item) => item.catalog.imageUrl));
         respond(
           true,
           {
-            items: joinClawHubPluginCatalog({
-              remote: remote.items,
-              published,
-              local,
-              includeBundledOnly: canIncludeBundledOnly,
-              intent: params.intent,
-              category: params.category,
-              query: params.query,
-              cursor: params.cursor,
-            }),
+            items,
             ...(remote.nextCursor ? { nextCursor: remote.nextCursor } : {}),
             ...(publicationError ? { remoteError: publicationError } : {}),
           },
@@ -332,6 +335,7 @@ export const pluginsHandlers: GatewayRequestHandlers = {
       }
       try {
         const remote = await fetchClawHubPluginDetail({ packageName: identity.identity });
+        registerClawHubCatalogIconUrls([remote.iconUrl, remote.owner?.imageUrl]);
         respond(true, joinClawHubPluginDetail({ remote, local }), undefined);
       } catch (error) {
         if (!localPlugin) {
