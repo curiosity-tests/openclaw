@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { UpdateRunResult } from "../../infra/update-runner.js";
 import type { PackageInstallUpdateParams } from "./update-command-package.js";
-import type { PackageUpdateExecutor, PackageUpdatePreparation } from "./update-package-executor.js";
+import type { PackageUpdateExecutor } from "./update-package-executor.js";
 
 const mocks = vi.hoisted(() => ({
   captureManagedContext: vi.fn(),
@@ -92,7 +92,7 @@ const activation: Parameters<PackageUpdateExecutor["activate"]>[0]["activation"]
   managedServiceEnv: { OPENCLAW_PROFILE: "default" },
 };
 
-function packagePreparation(): PackageUpdatePreparation {
+function packagePreparation(): Parameters<PackageUpdateExecutor["prepare"]>[0] {
   return {
     root: "/opt/openclaw",
     installKind: "package",
