@@ -6,7 +6,6 @@ import {
   markPackagePostInstallDoctorAdvisory,
   runGlobalPackageUpdateSteps,
   type PackageUpdateTransaction,
-  type PackageUpdateStepResult,
 } from "../../infra/package-update-steps.js";
 import {
   consumeUpdatePostInstallDoctorResult,
@@ -25,6 +24,7 @@ import { buildUpdateDoctorEnv } from "../../infra/update-runner-doctor.js";
 import {
   resolveUpdateDoctorExecutionPolicy,
   type UpdateRunResult,
+  type UpdateStepResult,
 } from "../../infra/update-runner.js";
 import { defaultRuntime } from "../../runtime.js";
 import { createDeferredCore } from "../../shared/deferred.js";
@@ -193,7 +193,7 @@ export type PackageInstallUpdateParams = {
   nodeRunner?: string;
   installEnv?: NodeJS.ProcessEnv;
   installTarget?: ResolvedGlobalInstallTarget;
-  validateCandidate: (root: string) => Promise<PackageUpdateStepResult[]>;
+  validateCandidate: (root: string) => Promise<UpdateStepResult[]>;
   beforeActivate: () => Promise<void>;
   onTransaction: (transaction: PackageUpdateTransaction) => void;
 };
