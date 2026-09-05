@@ -89,6 +89,9 @@ describe("npm pack inventory", () => {
     expect(result).toMatchObject({ files: ["package.json"], npmVersion: "11.12.1" });
     expect(captures).toHaveLength(2);
     const [versionCapture, packCapture] = captures;
+    if (!versionCapture || !packCapture) {
+      throw new Error("Expected npm version and pack captures.");
+    }
     expect(packCapture.cwd).toBe(versionCapture.cwd);
     expect(packCapture.cwd).not.toBe(packageRoot);
     expect(versionCapture.args).toEqual([`--prefix=${versionCapture.cwd}`, "--version"]);
