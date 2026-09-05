@@ -18,7 +18,6 @@ import {
   assistantGroupCanOwnActiveRunStatus,
   agentRunFrameGroups,
   buildCachedChatItems,
-  collectToolTitleCandidates,
   coalesceAgentRunFrames,
   coalesceActivityRuns,
   coalesceStreamRuns,
@@ -32,7 +31,6 @@ import {
   syncToolCardExpansionState,
 } from "../chat-thread.ts";
 import { hasForwardedSource } from "../chat-turn-boundary.ts";
-import { getToolTitlesVersion, scheduleToolTitlesForTranscript } from "../tool-titles.ts";
 import { renderAgentRunFrame } from "./chat-agent-run-frame.ts";
 import { renderBackgroundTasksStatusRow } from "./chat-background-tasks-status.ts";
 import { renderChatDivider, renderChatNotice } from "./chat-divider.ts";
@@ -145,9 +143,6 @@ export function projectChatTranscript(
   const runOutputTokens = workingIndicator?.runId
     ? (props.runUsageById?.get(workingIndicator.runId)?.outputTokens ?? null)
     : null;
-  if (props.showToolCalls && !searchFiltering) {
-    scheduleToolTitlesForTranscript(collectToolTitleCandidates(chatItems));
-  }
   const latestBrowserTabs =
     props.browserTabPreviewsActive === false
       ? latestBrowserTabCards([], [])
@@ -272,6 +267,7 @@ export function projectChatTranscript(
   const messageRowKeysById = new Map<string, string>();
   const resolveReplyPreview = createReplyPreviewResolver(loadedReplySources, props);
   const sharedMessageRenderOptions = {
+    presented: props.presented,
     onReply: props.onSetReply
       ? (target) => state.transcriptRenderContext.onSetReply?.(target)
       : undefined,
@@ -614,10 +610,12 @@ export function projectChatTranscript(
     getChatMediaRenderVersion(),
     // The host minute poll requests an update; this key crosses row guard() memoization.
     Math.floor(Date.now() / 60_000),
-    getToolTitlesVersion(),
     JSON.stringify([...latestBrowserTabs]),
     props.sessionKey,
-    props.selectedSession,
+    props.presented,
+    // Session activity/title patches do not change settled rows. Their visible
+    // session facts (gutter, reasoning, context window, recap) own invalidation.
+    isDirectThread,
     props.boardProvider,
     props.boardProvider?.canPinWidgets,
     props.boardProvider?.canPinMcpApps,

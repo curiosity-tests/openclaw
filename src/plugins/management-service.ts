@@ -82,6 +82,7 @@ import {
 import {
   isUnavailableNpmTarget,
   PLUGIN_INSTALL_ERROR_CODE,
+  type PluginInstallArtifactConsentRequest,
   type PluginInstallLogger,
 } from "./install-types.js";
 import {
@@ -96,11 +97,11 @@ import {
   withoutPluginInstallRecords,
 } from "./installed-plugin-index-records.js";
 import { createInstalledPluginIndexScopeLookup } from "./installed-plugin-index-scope-lookup.js";
-import { isInstalledPluginEnabled } from "./installed-plugin-index.js";
 import {
-  resolveInstalledPluginLifecycleOwnership,
-  resolveInstalledPluginPackageOwnership,
-} from "./installed-plugin-package-ownership.js";
+  createInstalledPluginEnabledPredicate,
+  isInstalledPluginEnabled,
+} from "./installed-plugin-index.js";
+import { createInstalledPluginOwnershipResolver } from "./installed-plugin-package-ownership.js";
 import { ManagedPluginLifecycleError } from "./management-lifecycle-error.js";
 import type { PluginManifestRecord } from "./manifest-registry.js";
 import type { PluginDiagnostic } from "./manifest-types.js";
@@ -220,6 +221,8 @@ export type ManagedPluginSourceInstallRequest =
   | {
       source: "local";
       path: string;
+      /** Stable source provenance when installing an owner-verified temporary copy. */
+      recordPath?: string;
       recordSource: "archive" | "path";
       mode: "install" | "update";
       link?: boolean;
@@ -353,17 +356,12 @@ function resolveManagedPluginDiagnostics(
   config: OpenClawConfig,
 ): PluginDiagnostic[] {
   const dependencies = getManagedPluginCache().dependencyStatus;
+  const isEnabled = createInstalledPluginEnabledPredicate(snapshot.index.plugins, config);
   const { diagnostics } = projectPluginDependencyHealth({
     plugins: snapshot.index.plugins.map((record) => {
       const manifest = snapshot.byPluginId.get(record.pluginId);
-      const enabled = isInstalledPluginEnabled(snapshot.index, record.pluginId, config);
-      const tracksDependencies = tracksPluginDependencyStatus({
-        origin: record.origin,
-        pluginId: record.pluginId,
-        packageName: record.packageName,
-        packageBuild: record.packageBuild,
-      });
-      if (manifest && tracksDependencies && !dependencies.has(manifest)) {
+      const enabled = isEnabled(record.pluginId);
+      if (manifest && !dependencies.has(manifest) && tracksPluginDependencyStatus(record)) {
         dependencies.set(
           manifest,
           buildPluginDependencyStatus({
@@ -885,11 +883,18 @@ export const listManagedPlugins = withManagedPluginCache(
     const installedIconsById = new Map<string, ManagedPluginIconSource | undefined>();
     const installedClawHubPackages = new Set<string>();
     const capabilityConsentDiagnostics: PluginDiagnostic[] = [];
+    // Hosted loading can yield; prepare this phase from the current config.
+    const isEnabled = createInstalledPluginEnabledPredicate(
+      metadata.index.plugins,
+      params.config,
+      env,
+    );
+    const ownershipResolver = createInstalledPluginOwnershipResolver(metadata.index);
     const plugins = metadata.index.plugins.map((record): ManagedPluginCatalogEntry => {
-      const enabled = isInstalledPluginEnabled(metadata.index, record.pluginId, params.config, env);
+      const enabled = isEnabled(record.pluginId);
       const manifest = metadata.byPluginId.get(record.pluginId);
       const localCatalog = normalizeCatalogMetadata(manifest?.catalog);
-      const ownership = resolveInstalledPluginPackageOwnership(metadata.index, record.pluginId);
+      const ownership = ownershipResolver.resolvePackage(record.pluginId);
       const installOwner = ownership.ok ? ownership.value.installOwner : undefined;
       const installRecord = installOwner ? metadata.index.installRecords[installOwner] : undefined;
       if (
@@ -1127,7 +1132,9 @@ export const inspectManagedPlugin = withManagedPluginCache(
 
     if (record) {
       const manifest = metadata.byPluginId.get(pluginId);
-      const ownership = resolveInstalledPluginPackageOwnership(metadata.index, pluginId, env);
+      const ownership = createInstalledPluginOwnershipResolver(metadata.index, env).resolvePackage(
+        pluginId,
+      );
       const installOwner = ownership.ok ? ownership.value.installOwner : undefined;
       const installRecord = installOwner ? metadata.index.installRecords[installOwner] : undefined;
       const { entry: officialEntry, clawhubPackage } = resolveInstalledHostedOfficialEntry({
@@ -1368,6 +1375,7 @@ async function persistManagedSourceInstall(params: {
   runtime?: RuntimeEnv;
   successMessage?: string;
   beforePersistentApply?: () => void;
+  beforePersistentEffect?: () => void | Promise<void>;
 }): Promise<{ config: OpenClawConfig; warnings: string[] }> {
   const warnings: string[] = [];
   let committed = false;
@@ -1380,6 +1388,7 @@ async function persistManagedSourceInstall(params: {
       runtime: params.runtime,
       persistenceLogger: { warn: (message) => warnings.push(message) },
       beforePersistentApply: params.beforePersistentApply,
+      beforePersistentEffect: params.beforePersistentEffect,
       // Only the persistence owner can distinguish rejection from a late refresh failure.
       onCommitted: () => {
         committed = true;
@@ -1486,6 +1495,8 @@ type ManagedPluginSourceInstallParams = {
   acknowledgeCapabilities?: PluginCapabilityConsentAcknowledgment;
   onCapabilityConsent?: PluginCapabilityConsentHandler;
   beforePersistentApply?: () => void;
+  /** Revalidate the initiating owner after artifact review and before durable activation. */
+  beforePersistentEffect?: () => void | Promise<void>;
 };
 
 /**
@@ -1498,6 +1509,23 @@ type ManagedPluginSourceInstallParams = {
  */
 export async function installManagedPluginSource(
   params: ManagedPluginSourceInstallParams,
+): Promise<ManagedPluginSourceInstallResult> {
+  return await withPluginLifecycleLease({ env: params.env }, async (lease) => {
+    const assertOwned = lease.assertOwned.bind(lease);
+    const ownedParams = {
+      ...params,
+      beforePersistentApply: () => {
+        params.beforePersistentApply?.();
+        assertOwned();
+      },
+    };
+    return await installManagedPluginSourceUnderLease(ownedParams, assertOwned);
+  });
+}
+
+async function installManagedPluginSourceUnderLease(
+  params: ManagedPluginSourceInstallParams,
+  assertOwned: () => void,
 ): Promise<ManagedPluginSourceInstallResult> {
   const { request } = params;
   if (request.source === "official" && request.installSources) {
@@ -1526,19 +1554,22 @@ export async function installManagedPluginSource(
       : { ...installAttempt, installSource: installedSource };
   }
   if (request.source !== "official" && request.source !== "npm" && request.source !== "clawhub") {
-    return await installResolvedManagedPluginSource(params);
+    return await installResolvedManagedPluginSource(params, assertOwned);
   }
   const installSpec = resolveOfficialManagedInstallSpec({
     request,
     config: params.snapshot.config,
   });
   if (!installSpec) {
-    return await installResolvedManagedPluginSource(params);
+    return await installResolvedManagedPluginSource(params, assertOwned);
   }
-  const result = await installResolvedManagedPluginSource({
-    ...params,
-    request: { ...request, spec: installSpec, recordSpec: request.recordSpec ?? request.spec },
-  });
+  const result = await installResolvedManagedPluginSource(
+    {
+      ...params,
+      request: { ...request, spec: installSpec, recordSpec: request.recordSpec ?? request.spec },
+    },
+    assertOwned,
+  );
   if (result.ok) {
     return result;
   }
@@ -1559,6 +1590,7 @@ export async function installManagedPluginSource(
 /** Execute one resolved plugin source through the shared install-and-persist pipeline. */
 async function installResolvedManagedPluginSource(
   params: ManagedPluginSourceInstallParams,
+  assertOwned: () => void,
 ): Promise<ManagedPluginSourceInstallResult> {
   const { request } = params;
   const env = params.env ?? process.env;
@@ -1602,16 +1634,25 @@ async function installResolvedManagedPluginSource(
         onCapabilityConsent: params.onCapabilityConsent,
       });
 
-  const common = requestDeferredPluginInstall({
-    ...params.safetyOverrides,
-    config: params.snapshot.config,
-    extensionsDir,
-    logger: params.logger,
-    beforePersistentApply: params.beforePersistentApply,
-    ...(capabilityConsent
-      ? { onBeforePluginArtifactCommit: capabilityConsent.onBeforePluginArtifactCommit }
-      : {}),
-  });
+  const common = requestDeferredPluginInstall(
+    {
+      ...params.safetyOverrides,
+      config: params.snapshot.config,
+      extensionsDir,
+      logger: params.logger,
+      beforePersistentApply: params.beforePersistentApply,
+      ...(capabilityConsent || params.beforePersistentEffect
+        ? {
+            onBeforePluginArtifactCommit: async (artifact: PluginInstallArtifactConsentRequest) => {
+              await capabilityConsent?.onBeforePluginArtifactCommit(artifact);
+              await params.beforePersistentEffect?.();
+            },
+          }
+        : {}),
+    },
+    undefined,
+    assertOwned,
+  );
   const complete = async <T extends SourceInstallerResult>(
     installResult: Promise<T>,
     completed: {
@@ -1695,7 +1736,7 @@ async function installResolvedManagedPluginSource(
         successMessage: request.successMessage,
         install: (result) => ({
           source: request.recordSource,
-          sourcePath: request.path,
+          sourcePath: request.recordPath ?? request.path,
           installPath: installPath ?? result.targetDir,
           version: result.version,
         }),
@@ -1943,11 +1984,10 @@ export async function installManagedPlugin(params: {
       officialCatalog,
       metadata: installedMetadata,
     });
-    const installedOwnership = resolveInstalledPluginPackageOwnership(
+    const installedOwnership = createInstalledPluginOwnershipResolver(
       installedMetadata.index,
-      installed.pluginId,
       env,
-    );
+    ).resolvePackage(installed.pluginId);
     if (!installedOwnership.ok) {
       throw new ManagedPluginLifecycleError(installedOwnership.error);
     }
@@ -2085,7 +2125,9 @@ export async function uninstallManagedPlugin(params: {
     if (!record && !Object.hasOwn(installRecords, pluginId)) {
       throw new ManagedPluginLifecycleError(`Plugin not found: ${pluginId}`);
     }
-    const ownership = resolveInstalledPluginLifecycleOwnership(metadata.index, pluginId, env);
+    const ownership = createInstalledPluginOwnershipResolver(metadata.index, env).resolveLifecycle(
+      pluginId,
+    );
     if (!ownership.ok) {
       throw new ManagedPluginLifecycleError(ownership.error);
     }
