@@ -49,9 +49,11 @@ export function renderPluginCardIdentity(params: {
       ${params.attribution.official ? renderPluginOfficialBadge() : nothing}
     </div>
     ${params.subtitle ? renderPluginCardSummary(params.subtitle) : nothing}
-    ${params.showAuthor === false
-      ? nothing
-      : renderPluginAuthor(params.attribution.author, { linked: params.linkedAuthor })}
+    ${
+      params.showAuthor === false
+        ? nothing
+        : renderPluginAuthor(params.attribution.author, { linked: params.linkedAuthor })
+    }
   </div>`;
 }
 
