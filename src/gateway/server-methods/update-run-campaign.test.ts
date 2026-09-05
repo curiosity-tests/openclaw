@@ -1,6 +1,6 @@
 // update.run campaign tests cover failure release and concurrent campaign ownership.
 import { expectDefined } from "@openclaw/normalization-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UpdateScheduleState } from "../../../packages/gateway-protocol/src/index.js";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -8,7 +8,9 @@ import type { RespawnSupervisor } from "../../infra/supervisor-markers.js";
 import type { UpdateCampaignController } from "../../infra/update-campaign.js";
 import type { UpdateRunResult } from "../../infra/update-runner.js";
 import { withEnvAsync } from "../../test-utils/env.js";
+import { createTempHomeEnv, type TempHomeEnv } from "../../test-utils/temp-home.js";
 
+let ledgerHome: TempHomeEnv;
 let currentCampaignId: string | undefined;
 let updateSchedule: UpdateScheduleState | null;
 let updateChannel: "stable" | "beta" | "dev" | null;
@@ -169,7 +171,8 @@ const failedUpdate: UpdateRunResult = {
   durationMs: 100,
 };
 
-beforeEach(() => {
+beforeEach(async () => {
+  ledgerHome = await createTempHomeEnv("openclaw-update-campaign-rpc-");
   currentCampaignId = "campaign-1";
   updateSchedule = null;
   updateChannel = null;
@@ -206,6 +209,10 @@ beforeEach(() => {
   logGatewayInfoMock.mockClear();
   writeRestartSentinelMock.mockClear();
   recordLatestUpdateRestartSentinelMock.mockClear();
+});
+
+afterEach(async () => {
+  await ledgerHome.restore();
 });
 
 function setDevCampaignSchedule(upstreamSha = "frozen-upstream-sha"): void {

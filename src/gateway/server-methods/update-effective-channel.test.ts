@@ -1,6 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import type { UpdateChannel } from "../../infra/update-channels.js";
+import { createTempHomeEnv, type TempHomeEnv } from "../../test-utils/temp-home.js";
+
+let ledgerHome: TempHomeEnv;
 
 type TestUpdateAvailable = {
   currentVersion: string;
@@ -48,7 +51,8 @@ vi.mock("./validation.js", () => ({
   assertValidParams: () => true,
 }));
 
-beforeEach(() => {
+beforeEach(async () => {
+  ledgerHome = await createTempHomeEnv("openclaw-update-effective-channel-");
   getUpdateAvailableMock.mockReset();
   getUpdateAvailableMock.mockReturnValue(null);
   getUpdateEffectiveChannelMock.mockReset();
@@ -61,6 +65,10 @@ beforeEach(() => {
   getLatestUpdateRestartSentinelMock.mockReturnValue(null);
   refreshLatestUpdateRestartSentinelMock.mockReset();
   refreshLatestUpdateRestartSentinelMock.mockResolvedValue(null);
+});
+
+afterEach(async () => {
+  await ledgerHome.restore();
 });
 
 describe("update.status effective channel", () => {
