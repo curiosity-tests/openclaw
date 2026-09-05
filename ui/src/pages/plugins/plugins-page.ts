@@ -395,8 +395,8 @@ class PluginsPage extends OpenClawLightDomElement {
     );
   }
 
-  private installWizardKey(state = this.installWizard): string | null {
-    return state ? `install:${state.catalogId}` : null;
+  private installWizardKey(wizard = this.installWizard): string | null {
+    return wizard ? `install:${wizard.catalogId}` : null;
   }
 
   private clearInstallReconnectTimeout() {
@@ -459,16 +459,16 @@ class PluginsPage extends OpenClawLightDomElement {
   }
 
   private beginInstallWizard() {
-    const state = this.installWizard;
-    const key = this.installWizardKey(state);
-    if (!state || !key || !this.canMutate()) {
+    const wizard = this.installWizard;
+    const key = this.installWizardKey(wizard);
+    if (!wizard || !key || !this.canMutate()) {
       return;
     }
-    this.installWizard = { ...state, stage: "installing", error: undefined };
-    void this.consentController.install(state.request, key, {
+    this.installWizard = { ...wizard, stage: "installing", error: undefined };
+    void this.consentController.install(wizard.request, key, {
       reviewConfirmed: true,
       onCommitted: (result) => {
-        if (this.installWizard?.catalogId !== state.catalogId) {
+        if (this.installWizard?.catalogId !== wizard.catalogId) {
           return;
         }
         this.installWizard = {
@@ -479,14 +479,14 @@ class PluginsPage extends OpenClawLightDomElement {
           error: undefined,
         };
         if (result.restartRequired) {
-          this.armInstallReconnectTimeout(state.catalogId);
+          this.armInstallReconnectTimeout(wizard.catalogId);
         } else {
           void this.resumeInstallWizard();
         }
       },
-      onFailure: (error) => this.failInstallWizard(state.catalogId, error),
+      onFailure: (error) => this.failInstallWizard(wizard.catalogId, error),
       onInstallPolicyWarning: (_request, reason) => {
-        if (this.installWizard?.catalogId === state.catalogId) {
+        if (this.installWizard?.catalogId === wizard.catalogId) {
           this.installWizard = {
             ...this.installWizard,
             stage: "policy-warning",
@@ -498,14 +498,14 @@ class PluginsPage extends OpenClawLightDomElement {
   }
 
   private continueInstallPolicyWarning() {
-    const state = this.installWizard;
-    const key = this.installWizardKey(state);
-    if (!state || !key) {
+    const wizard = this.installWizard;
+    const key = this.installWizardKey(wizard);
+    if (!wizard || !key) {
       return;
     }
-    this.installWizard = { ...state, stage: "installing", error: undefined };
+    this.installWizard = { ...wizard, stage: "installing", error: undefined };
     void this.consentController.install(
-      { ...state.request, acknowledgeInstallPolicyWarning: true },
+      { ...wizard.request, acknowledgeInstallPolicyWarning: true },
       key,
     );
   }
@@ -518,17 +518,18 @@ class PluginsPage extends OpenClawLightDomElement {
   }
 
   private installedWizardPlugin() {
-    const state = this.installWizard;
-    if (!state) {
+    const wizard = this.installWizard;
+    if (!wizard) {
       return null;
     }
-    const packageName = state.request.source === "clawhub" ? state.request.packageName : undefined;
-    const officialId = state.request.source === "official" ? state.request.pluginId : undefined;
+    const packageName =
+      wizard.request.source === "clawhub" ? wizard.request.packageName : undefined;
+    const officialId = wizard.request.source === "official" ? wizard.request.pluginId : undefined;
     return (
       this.result?.plugins.find(
         (plugin) =>
           plugin.installed &&
-          (plugin.id === state.pluginId ||
+          (plugin.id === wizard.pluginId ||
             plugin.id === officialId ||
             (packageName !== undefined && plugin.packageName === packageName)),
       ) ?? null
@@ -536,18 +537,21 @@ class PluginsPage extends OpenClawLightDomElement {
   }
 
   private async resumeInstallWizard(): Promise<void> {
-    const state = this.installWizard;
-    if (!state || state.stage !== "reconnecting" || !this.gateway.connected) {
+    const wizard = this.installWizard;
+    if (!wizard || wizard.stage !== "reconnecting" || !this.gateway.connected) {
       return;
     }
     this.clearInstallReconnectTimeout();
     const plugin = this.installedWizardPlugin();
     if (!plugin) {
-      this.failInstallWizard(state.catalogId, t("pluginsPage.installWizard.installedStateMissing"));
+      this.failInstallWizard(
+        wizard.catalogId,
+        t("pluginsPage.installWizard.installedStateMissing"),
+      );
       return;
     }
     const stage = installedPluginWizardStage(plugin);
-    this.installWizard = { ...state, pluginId: plugin.id, stage };
+    this.installWizard = { ...wizard, pluginId: plugin.id, stage };
     if (stage === "configuring") {
       if (this.context.runtimeConfig.state.connected) {
         await Promise.all([
@@ -564,30 +568,30 @@ class PluginsPage extends OpenClawLightDomElement {
   }
 
   private async saveInstallWizardConfiguration(): Promise<void> {
-    const state = this.installWizard;
-    if (!state?.pluginId || state.stage !== "configuring" || !this.canEditConfig()) {
+    const wizard = this.installWizard;
+    if (!wizard?.pluginId || wizard.stage !== "configuring" || !this.canEditConfig()) {
       return;
     }
     const saved = await this.context.runtimeConfig.save();
     if (!saved) {
       this.failInstallWizard(
-        state.catalogId,
+        wizard.catalogId,
         this.context.runtimeConfig.state.lastError ??
           t("pluginsPage.installWizard.configSaveFailed"),
       );
       return;
     }
     await this.refreshCatalog();
-    this.enableInstalledWizardPlugin(state.pluginId);
+    this.enableInstalledWizardPlugin(wizard.pluginId);
   }
 
   private enableInstalledWizardPlugin(pluginId: string) {
-    const state = this.installWizard;
-    if (!state) {
+    const wizard = this.installWizard;
+    if (!wizard) {
       return;
     }
     const key = pluginRowKey(pluginId);
-    this.installWizard = { ...state, pluginId, stage: "enabling", error: undefined };
+    this.installWizard = { ...wizard, pluginId, stage: "enabling", error: undefined };
     void this.consentController.updateEnabled(
       pluginId,
       true,
@@ -595,7 +599,7 @@ class PluginsPage extends OpenClawLightDomElement {
       {},
       {
         onCommitted: (result) => {
-          if (this.installWizard?.catalogId !== state.catalogId) {
+          if (this.installWizard?.catalogId !== wizard.catalogId) {
             return;
           }
           this.installWizard = {
@@ -604,28 +608,28 @@ class PluginsPage extends OpenClawLightDomElement {
             stage: result.restartRequired ? "reconnecting" : "success",
           };
           if (result.restartRequired) {
-            this.armInstallReconnectTimeout(state.catalogId);
+            this.armInstallReconnectTimeout(wizard.catalogId);
           } else {
             this.clearInstallReconnectTimeout();
           }
         },
-        onFailure: (error) => this.failInstallWizard(state.catalogId, error),
+        onFailure: (error) => this.failInstallWizard(wizard.catalogId, error),
       },
     );
   }
 
   private retryInstallWizard() {
-    const state = this.installWizard;
-    if (!state) {
+    const wizard = this.installWizard;
+    if (!wizard) {
       return;
     }
-    if (state.pluginId) {
-      this.installWizard = { ...state, stage: "reconnecting", error: undefined };
-      this.armInstallReconnectTimeout(state.catalogId);
+    if (wizard.pluginId) {
+      this.installWizard = { ...wizard, stage: "reconnecting", error: undefined };
+      this.armInstallReconnectTimeout(wizard.catalogId);
       void this.refreshCatalog().then(() => this.resumeInstallWizard());
       return;
     }
-    this.installWizard = { ...state, stage: "review", error: undefined };
+    this.installWizard = { ...wizard, stage: "review", error: undefined };
   }
 
   private manageInstalledWizardPlugin() {

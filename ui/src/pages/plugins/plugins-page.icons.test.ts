@@ -24,8 +24,12 @@ describe("PluginsPage icon routing", () => {
   afterEach(resetPluginsPageTestState);
 
   const requestResult = async (method: string) => {
-    if (method === "plugins.catalog.categories") return { categories: [] };
-    if (method === "plugins.catalog.browse") return { items: [] };
+    if (method === "plugins.catalog.categories") {
+      return { categories: [] };
+    }
+    if (method === "plugins.catalog.browse") {
+      return { items: [] };
+    }
     return createResult();
   };
 
