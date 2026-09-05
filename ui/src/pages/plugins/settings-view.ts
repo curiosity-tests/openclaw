@@ -99,6 +99,7 @@ function pluginStatePresentation(plugin: PluginCatalogItem): {
     case "not-installed":
       return { kind: "muted", label: t("pluginsPage.available") };
   }
+  return plugin.state satisfies never;
 }
 
 function matchesQuery(plugin: PluginCatalogItem, query: string): boolean {

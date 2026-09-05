@@ -260,7 +260,9 @@ function renderPrimaryAction(props: PluginInstallWizardProps): TemplateResult | 
     class="btn primary oc-action oc-action-primary"
     ?disabled=${!props.mutationBlockedReason && blocked}
     @click=${() => {
-      if (!blocked) props.onInstall();
+      if (!blocked) {
+        props.onInstall();
+      }
     }}
   >
     ${t("pluginsPage.installNamed", { name: props.state.detail.plugin.catalog.name })}
@@ -276,7 +278,9 @@ export function renderPluginInstallWizard(props: PluginInstallWizardProps): Temp
     label=${t("pluginsPage.installWizard.title", { name: catalog.name })}
     style="--openclaw-modal-width: min(720px, calc(100vw - 32px));"
     @modal-cancel=${() => {
-      if (!isWorking) props.onClose();
+      if (!isWorking) {
+        props.onClose();
+      }
     }}
   >
     <section class="plugin-install-wizard oc-card" data-stage=${props.state.stage}>
