@@ -142,7 +142,8 @@ extension DashboardWindowController {
         case .locationPrecise:
             defaults.set(enabled, forKey: locationPreciseKey)
         case .wakeEnabled:
-            await state.setVoiceWakeEnabled(enabled)
+            let sourceID = self.notificationSourceID
+            await state.setVoiceWakeEnabled(enabled) { self.canUseDeviceSettings(sourceID: sourceID) }
         case .triggerChime:
             state.voiceWakeTriggerChime = Self.deviceChime(enabled: enabled, current: state.voiceWakeTriggerChime)
         case .sendChime:

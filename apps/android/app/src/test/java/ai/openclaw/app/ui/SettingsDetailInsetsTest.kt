@@ -230,10 +230,8 @@ class SettingsDetailInsetsTest {
         val send = composeRule.onNodeWithText("Send")
 
         fun awaitReply(index: Int) {
-          composeRule.waitUntil(timeoutMillis = 5_000) {
-            val state = runtime.systemAgentChatState.value
-            state.messages.lastOrNull()?.text == replies[index] && !state.sending && state.expectsSensitiveReply == (index == 1)
-          }
+          this.awaitReply(replies[index])
+          assertEquals(index == 1, runtime.systemAgentChatState.value.expectsSensitiveReply)
           composeRule.onNodeWithText(replies[index]).assertIsDisplayed()
         }
 
