@@ -78,7 +78,7 @@ describe("renderInstalledPlugins", () => {
     expect(onRefresh).toHaveBeenCalledOnce();
   });
 
-  it("groups enabled plugins first and alphabetizes both groups", async () => {
+  it("prioritizes actionable plugins, then alphabetizes enabled and disabled groups", async () => {
     const plugins = [
       createPlugin({ id: "attention-b", name: "Attention B", state: "error", order: 20 }),
       createPlugin({ id: "needs-setup", name: "Needs Setup", state: "needs-setup", order: 5 }),
@@ -133,11 +133,11 @@ describe("renderInstalledPlugins", () => {
 
     expect(visiblePluginIds(container)).toHaveLength(9);
     expect(visiblePluginIds(container).slice(0, 5)).toEqual([
-      "enabled-a",
-      "enabled-b",
       "attention-a",
       "attention-b",
-      "disabled-00",
+      "needs-setup",
+      "enabled-a",
+      "enabled-b",
     ]);
     expect(container.querySelector('input[type="search"]')).toBeNull();
     expect(container.textContent).not.toContain("Not Installed");

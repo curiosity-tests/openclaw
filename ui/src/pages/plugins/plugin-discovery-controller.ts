@@ -300,6 +300,9 @@ export class PluginDiscoveryController {
 
   updateQuery(query: string): void {
     this.query = query;
+    if (query.trim()) {
+      this.intent = "all";
+    }
     this.host.requestUpdate();
     if (this.searchTimer) {
       clearTimeout(this.searchTimer);

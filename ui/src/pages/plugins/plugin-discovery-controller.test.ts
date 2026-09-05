@@ -1,6 +1,6 @@
 // @vitest-environment node
 import type { ReactiveControllerHost } from "lit";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { PluginDiscoveryEntry, PluginDiscoveryResult } from "../../lib/plugins/index.ts";
 import { PluginDiscoveryController } from "./plugin-discovery-controller.ts";
@@ -55,6 +55,26 @@ function setup(responses: PluginDiscoveryResult[]) {
   });
   return { controller, onEntriesChanged, request };
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+it("switches filtered tabs to All when starting a unified search", async () => {
+  vi.useFakeTimers();
+  const { controller, request } = setup([{ items: [] }]);
+  controller.intent = "official";
+
+  controller.updateQuery("memory");
+  await vi.runAllTimersAsync();
+
+  expect(controller.intent).toBe("all");
+  expect(request).toHaveBeenCalledWith(
+    "plugins.catalog.browse",
+    expect.objectContaining({ intent: "all", query: "memory" }),
+    expect.anything(),
+  );
+});
 
 it("consumes cursorless Bundled overflow without requesting the first page again", async () => {
   const bundled = Array.from({ length: 26 }, (_, index) => entry(index));

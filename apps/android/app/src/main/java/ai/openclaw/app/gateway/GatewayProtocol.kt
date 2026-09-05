@@ -916,6 +916,9 @@ enum class GatewayMethod(
   PluginsControlUiReload("plugins.controlUi.reload"),
   PluginsControlUiReport("plugins.controlUi.report"),
   PluginsControlUiStatus("plugins.controlUi.status"),
+  PluginsCatalogBrowse("plugins.catalog.browse"),
+  PluginsCatalogCategories("plugins.catalog.categories"),
+  PluginsCatalogGet("plugins.catalog.get"),
   UpdateRunsGet("update.runs.get"),
   UpdateRunsList("update.runs.list"),
 }

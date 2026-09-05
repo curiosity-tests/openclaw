@@ -23,13 +23,20 @@ import {
 import { renderPluginCardIdentity, type PluginCardAttribution } from "./plugin-card.ts";
 const INSTALLED_PLUGINS_INITIAL_LIMIT = 9;
 
-/** Enabled plugins form the first alphabetical group; all disabled states follow. */
+function installedPluginPriority(plugin: PluginCatalogItem): number {
+  if (plugin.state === "error" || plugin.state === "needs-setup") {
+    return 0;
+  }
+  return plugin.enabled ? 1 : 2;
+}
+
+/** Actionable plugins lead the collapsed inventory, followed by enabled and disabled groups. */
 function prioritizeInstalledPlugins(plugins: readonly PluginCatalogItem[]): PluginCatalogItem[] {
   return plugins
     .filter((plugin) => plugin.installed)
     .toSorted(
       (left, right) =>
-        Number(right.enabled) - Number(left.enabled) ||
+        installedPluginPriority(left) - installedPluginPriority(right) ||
         left.name.localeCompare(right.name) ||
         left.id.localeCompare(right.id),
     );

@@ -544,7 +544,7 @@ describe("plugin management Gateway handlers", () => {
     });
   });
 
-  it("unifies search with unpublished bundled results before ClawHub matches", async () => {
+  it("unifies All search with unpublished bundled results before ClawHub matches", async () => {
     const remote = {
       packageName: "@alice/memory-plus",
       displayName: "Memory Plus",
@@ -574,7 +574,7 @@ describe("plugin management Gateway handlers", () => {
 
     const result = await callHandler("plugins.catalog.browse", {
       query: "memory",
-      intent: "official",
+      intent: "all",
       pageSize: 25,
     });
 
@@ -590,6 +590,29 @@ describe("plugin management Gateway handlers", () => {
         { catalog: { name: "Memory Bundle", publishedToClawHub: false } },
         { catalog: { name: "Memory Plus", publishedToClawHub: true } },
       ],
+    });
+  });
+
+  it("preserves the Official filter for direct search requests", async () => {
+    catalogMocks.browse.mockResolvedValue({ items: [] });
+    managementMocks.list.mockResolvedValue({
+      plugins: [],
+      diagnostics: [],
+      mutationAllowed: true,
+    });
+
+    await callHandler("plugins.catalog.browse", {
+      query: "memory",
+      intent: "official",
+      pageSize: 25,
+    });
+
+    expect(catalogMocks.browse).toHaveBeenCalledWith({
+      query: "memory",
+      intent: "official",
+      category: undefined,
+      cursor: undefined,
+      limit: 25,
     });
   });
 

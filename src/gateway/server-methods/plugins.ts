@@ -168,7 +168,8 @@ export const pluginsHandlers: GatewayRequestHandlers = {
     try {
       const local = await listManagedPlugins({ config: context.getRuntimeConfig() });
       const query = params.query?.trim();
-      const includeBundledOnly = params.intent === "bundled" || Boolean(query);
+      const intent = params.intent ?? "all";
+      const includeBundledOnly = intent === "bundled" || (intent === "all" && Boolean(query));
       let published: Awaited<ReturnType<typeof fetchAllOfficialClawHubPlugins>> = [];
       let publicationError: string | undefined;
       if (includeBundledOnly) {
@@ -183,11 +184,11 @@ export const pluginsHandlers: GatewayRequestHandlers = {
       const canIncludeBundledOnly = includeBundledOnly && !publicationError;
       try {
         const remote =
-          params.intent === "bundled" && !query
+          intent === "bundled" && !query
             ? { items: [] }
             : await fetchClawHubPluginCatalog({
                 query,
-                intent: query || params.intent === "bundled" ? "all" : params.intent,
+                intent: intent === "bundled" ? "all" : intent,
                 category: params.category,
                 cursor: params.cursor,
                 limit: params.pageSize ?? 20,
@@ -197,7 +198,7 @@ export const pluginsHandlers: GatewayRequestHandlers = {
           published,
           local,
           includeBundledOnly: canIncludeBundledOnly,
-          intent: params.intent,
+          intent,
           category: params.category,
           query: params.query,
           cursor: params.cursor,
