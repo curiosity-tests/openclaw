@@ -13,10 +13,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { gzipSync } from "node:zlib";
 import { gte as semverGte, valid as validSemver } from "semver";
 import { Header, type HeaderData, Pax } from "tar";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { LOCAL_BUILD_METADATA_DIST_PATHS } from "../../scripts/lib/local-build-metadata-paths.mts";
 import {
   LEGACY_PACKAGE_INSTALL_GUARD_RELATIVE_PATH,
@@ -25,6 +26,7 @@ import {
 } from "../../scripts/lib/package-lifecycle-marker.mjs";
 import { WORKSPACE_TEMPLATE_PACK_PATHS } from "../../scripts/lib/workspace-bootstrap-smoke.mts";
 import { resolvePnpmRunner } from "../../scripts/pnpm-runner.mts";
+import { useAutoCleanupTempDirTracker } from "../helpers/temp-dir.js";
 
 const CHECK_SCRIPT = "scripts/check-openclaw-package-tarball.mts";
 const PUBLIC_CHECK_SCRIPT = "scripts/check-openclaw-package-tarball.mjs";
@@ -51,6 +53,7 @@ const LEGACY_AI_RUNTIME_PACKAGE_JSON = JSON.stringify({
     "./internal/runtime": { import: "./dist/internal/runtime.mjs" },
   },
 });
+const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
 function chmodTreeWorldReadable(dir: string) {
   chmodSync(dir, 0o755);
@@ -110,19 +113,15 @@ function checkCraftedTarball(
   entries: Array<HeaderData & { body?: Buffer | string; pax?: HeaderData }>,
   expectedErrors: string | string[],
 ) {
-  const root = mkdtempSync(join(tmpdir(), "openclaw-package-tarball-crafted-"));
-  try {
-    const tarball = join(root, "crafted.tgz");
-    writeCraftedTarball(tarball, entries);
-    const result = spawnSync(process.execPath, [resolve(CHECK_SCRIPT), tarball], {
-      encoding: "utf8",
-    });
-    expect(result.status).toBe(1);
-    for (const expectedError of Array.isArray(expectedErrors) ? expectedErrors : [expectedErrors]) {
-      expect(result.stderr).toContain(expectedError);
-    }
-  } finally {
-    rmSync(root, { recursive: true, force: true });
+  const root = tempDirs.make("openclaw-package-tarball-crafted-");
+  const tarball = join(root, "crafted.tgz");
+  writeCraftedTarball(tarball, entries);
+  const result = spawnSync(process.execPath, [resolve(CHECK_SCRIPT), tarball], {
+    encoding: "utf8",
+  });
+  expect(result.status).toBe(1);
+  for (const expectedError of Array.isArray(expectedErrors) ? expectedErrors : [expectedErrors]) {
+    expect(result.stderr).toContain(expectedError);
   }
 }
 
@@ -445,76 +444,82 @@ describe("check-openclaw-package-tarball", () => {
     });
   });
 
-  it.skipIf(process.platform === "win32")(
-    "rejects an archive package.json symlink before changing its external target",
-    () => {
-      const root = mkdtempSync(join(tmpdir(), "openclaw-package-tarball-link-"));
-      const externalRoot = mkdtempSync("/tmp/openclaw-package-link-target-");
-      try {
-        const externalManifestPath = join(externalRoot, "package.json");
-        const capturePath = join(root, "npm-pack-capture.json");
-        const originalBytes = Buffer.from(
-          '{"name":"openclaw","version":"2026.9.4","scripts":{"prepack":"exit 99"}}\n',
-        );
-        writeFileSync(externalManifestPath, originalBytes);
-        chmodSync(externalManifestPath, 0o444);
-        const originalMode = statSync(externalManifestPath).mode;
-        const tarball = join(root, "linked-package-json.tgz");
-        writeCraftedTarball(tarball, [
-          {
-            path: "package/package.json",
-            type: "SymbolicLink",
-            linkpath: externalManifestPath,
-          },
-        ]);
+  it("rejects an archive package.json symlink before changing its external target", () => {
+    const root = tempDirs.make("openclaw-package-tarball-link-");
+    const externalRoot = tempDirs.make("openclaw-package-link-target-");
+    const externalManifestPath = join(externalRoot, "package.json");
+    const capturePath = join(root, "npm-pack-capture.json");
+    const originalBytes = Buffer.from(
+      '{"name":"openclaw","version":"2026.9.4","scripts":{"prepack":"exit 99"}}\n',
+    );
+    writeFileSync(externalManifestPath, originalBytes);
+    chmodSync(externalManifestPath, 0o444);
+    const originalMode = statSync(externalManifestPath).mode;
+    const tarball = join(root, "linked-package-json.tgz");
+    writeCraftedTarball(tarball, [
+      {
+        path: "package/package.json",
+        type: "SymbolicLink",
+        linkpath: externalManifestPath,
+      },
+    ]);
+    const preload = join(root, "capture-npm-pack.mjs");
+    writeFileSync(
+      preload,
+      `
+import childProcess from "node:child_process";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+const originalSpawnSync = childProcess.spawnSync;
+childProcess.spawnSync = function patchedSpawnSync(...callArgs) {
+  const args = callArgs[1];
+  if (Array.isArray(args) && args.includes("pack") && args.includes("--dry-run")) {
+    fs.writeFileSync(process.env.OPENCLAW_TEST_NPM_CAPTURE, "called");
+    const stdout = JSON.stringify([{ files: [{ path: "package.json" }] }]);
+    return { pid: 0, output: [null, stdout, ""], stdout, stderr: "", status: 0, signal: null };
+  }
+  return originalSpawnSync.apply(this, callArgs);
+};
+syncBuiltinESMExports();
+`,
+    );
 
-        const toolchainRoot = join(root, "toolchain");
-        const fakeNode = join(toolchainRoot, "bin", "node");
-        const fakeNpm = join(toolchainRoot, "lib", "node_modules", "npm", "bin", "npm-cli.js");
-        mkdirSync(dirname(fakeNode), { recursive: true });
-        mkdirSync(dirname(fakeNpm), { recursive: true });
-        writeFileSync(fakeNode, `#!/bin/sh\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
-        writeFileSync(
-          fakeNpm,
-          [
-            "const fs = require('node:fs');",
-            "if (process.argv.includes('--version')) { process.stdout.write('11.19.0\\n'); process.exit(0); }",
-            "fs.writeFileSync(process.env.OPENCLAW_TEST_NPM_CAPTURE, JSON.stringify({",
-            "  bytes: fs.readFileSync('package.json', 'utf8'),",
-            "  mode: fs.statSync('package.json').mode,",
-            "}));",
-            "process.stdout.write(JSON.stringify([{ files: [{ path: 'package.json' }] }]));",
-          ].join("\n"),
-        );
-        const preload = join(root, "fake-exec-path.cjs");
-        writeFileSync(
-          preload,
-          "Object.defineProperty(process, 'execPath', { value: process.env.OPENCLAW_TEST_EXEC_PATH });\n",
-        );
+    const result = spawnSync(process.execPath, [resolve(CHECK_SCRIPT), tarball], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        NODE_OPTIONS: [process.env.NODE_OPTIONS, `--import=${pathToFileURL(preload).href}`]
+          .filter(Boolean)
+          .join(" "),
+        OPENCLAW_TEST_NPM_CAPTURE: capturePath,
+      },
+    });
 
-        const result = spawnSync(process.execPath, [resolve(CHECK_SCRIPT), tarball], {
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            NODE_OPTIONS: `--require=${preload}`,
-            OPENCLAW_TEST_EXEC_PATH: fakeNode,
-            OPENCLAW_TEST_NPM_CAPTURE: capturePath,
-          },
-        });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "unsupported tar entry type SymbolicLink: package/package.json",
+    );
+    expect(existsSync(capturePath)).toBe(false);
+    expect(readFileSync(externalManifestPath)).toEqual(originalBytes);
+    expect(statSync(externalManifestPath).mode).toBe(originalMode);
+  });
 
-        expect(result.status).toBe(1);
-        expect(result.stderr).toContain(
-          "unsupported tar entry type SymbolicLink: package/package.json",
-        );
-        expect(existsSync(capturePath)).toBe(false);
-        expect(readFileSync(externalManifestPath)).toEqual(originalBytes);
-        expect(statSync(externalManifestPath).mode).toBe(originalMode);
-      } finally {
-        rmSync(root, { recursive: true, force: true });
-        rmSync(externalRoot, { recursive: true, force: true });
-      }
-    },
-  );
+  it("accepts ContiguousFile as a dependency-defined regular entry", () => {
+    withTarball(["dist/index.js"], { "dist/index.js": "export {};\n" }, (tarball, _root, root) => {
+      writeCraftedTarball(
+        tarball,
+        listFilesRecursively(root).map((relativePath) => ({
+          path: `package/${relativePath.replaceAll("\\", "/")}`,
+          type: relativePath === "package.json" ? "ContiguousFile" : "File",
+          body: readFileSync(join(root, relativePath)),
+        })),
+      );
+      const result = spawnSync(process.execPath, [resolve(CHECK_SCRIPT), tarball], {
+        encoding: "utf8",
+      });
+      expect(result.status, result.stderr).toBe(0);
+    });
+  });
 
   it.each([
     {
@@ -683,6 +688,15 @@ describe("check-openclaw-package-tarball", () => {
         { path: "package/cafe\u0301.txt", type: "File" as const, body: "two\n" },
       ],
       error: "package tarball contains portable path collision:",
+    },
+    {
+      name: "Windows encoded-character collision",
+      entries: [
+        { path: "package/package.json", type: "File" as const, body: "{}\n" },
+        { path: "package/a:b", type: "File" as const, body: "one\n" },
+        { path: "package/a\uF03Ab", type: "File" as const, body: "two\n" },
+      ],
+      error: "package tarball contains portable path collision: package/a:b, package/a\uF03Ab",
     },
     {
       name: "missing manifest",

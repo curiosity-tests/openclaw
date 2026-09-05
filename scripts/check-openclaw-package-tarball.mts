@@ -411,11 +411,16 @@ type MaterialTarEntry = {
   path: string;
 };
 
+function isRegularTarEntry(entry: ReadEntry): boolean {
+  return entry.type === "File" || entry.type === "OldFile" || entry.type === "ContiguousFile";
+}
+
 function canonicalMaterialPath(entry: ReadEntry, errors: string[]): string | null {
   const rawPath = entry.header.path ?? "";
   const parseParts = (candidate: string): string[] | null => {
     const parts = candidate.split("/");
     if (
+      !candidate ||
       candidate.includes("\\") ||
       candidate.startsWith("/") ||
       /^[A-Za-z]:/u.test(candidate) ||
@@ -444,21 +449,22 @@ function canonicalMaterialPath(entry: ReadEntry, errors: string[]): string | nul
     errors.push(`unsafe tar entry path: ${finalPath || "<empty>"}`);
     return null;
   }
-  if (
-    parts[0] !== "package" ||
-    (parts.length === 1 && entry.type !== "Directory") ||
-    parts.some(
-      (part, index) =>
-        part === "" && index > 0 && !(entry.type === "Directory" && index === parts.length - 1),
-    )
-  ) {
+  if (parts[0] !== "package" || (parts.length === 1 && entry.type !== "Directory")) {
     errors.push(`tar entry is outside package/: ${finalPath || "<empty>"}`);
     return null;
   }
   return parts.join("/");
 }
 
-function scanTarball(archiveBytes: Buffer): {
+// tar@7.5.22 winchars.encode applies this mapping before Windows extraction.
+function portableExtractionPathKey(value: string): string {
+  return value
+    .normalize("NFC")
+    .replace(/[|<>?:]/gu, (char) => String.fromCodePoint(0xf000 + char.codePointAt(0)!))
+    .toLowerCase();
+}
+
+function scanTarball(archivePath: string): {
   entries: string[];
   files: string[];
 } {
@@ -466,21 +472,14 @@ function scanTarball(archiveBytes: Buffer): {
   const materialEntries: MaterialTarEntry[] = [];
   const inspectEntry = (entry: ReadEntry) => {
     const rawPath = entry.header.path ?? entry.path;
-    if (
-      entry.unsupported ||
-      entry.invalid ||
-      (entry.type !== "File" && entry.type !== "Directory") ||
-      Boolean(entry.linkpath)
-    ) {
+    const isFile = isRegularTarEntry(entry);
+    if ((!isFile && entry.type !== "Directory") || Boolean(entry.linkpath)) {
       errors.push(`unsupported tar entry type ${entry.type}: ${rawPath}`);
       return;
     }
     const materialPath = canonicalMaterialPath(entry, errors);
     if (!materialPath) {
       return;
-    }
-    if (entry.type === "Directory" && entry.size !== 0) {
-      errors.push(`tar directory entry has nonzero size: ${rawPath}`);
     }
     const mode = entry.mode;
     const needsExec = entry.type === "Directory" || (mode !== undefined && (mode & 0o111) !== 0);
@@ -490,7 +489,7 @@ function scanTarball(archiveBytes: Buffer): {
       );
     }
     materialEntries.push({
-      kind: entry.type === "Directory" ? "directory" : "file",
+      kind: isFile ? "file" : "directory",
       path: materialPath,
     });
   };
@@ -500,9 +499,24 @@ function scanTarball(archiveBytes: Buffer): {
     const parser = listTar({ sync: true, strict: true, onReadEntry: inspectEntry });
     parser.on("ignoredEntry", inspectEntry);
     parser.on("error", (error: Error) => {
-      parseError = error;
+      parseError ??= error;
     });
-    parser.end(archiveBytes);
+    const input = fs.openSync(archivePath, "r");
+    const chunk = Buffer.allocUnsafe(64 * 1024);
+    try {
+      let bytesRead = 0;
+      while ((bytesRead = fs.readSync(input, chunk, 0, chunk.length, null)) > 0) {
+        parser.write(chunk.subarray(0, bytesRead));
+        if (parseError) {
+          break;
+        }
+      }
+      if (!parseError) {
+        parser.end();
+      }
+    } finally {
+      fs.closeSync(input);
+    }
     if (parseError) {
       throw parseError;
     }
@@ -521,7 +535,7 @@ function scanTarball(archiveBytes: Buffer): {
     } else {
       exactPaths.set(entry.path, entry);
     }
-    const portablePath = entry.path.normalize("NFC").toLowerCase();
+    const portablePath = portableExtractionPathKey(entry.path);
     const portableExisting = portablePaths.get(portablePath);
     if (portableExisting && portableExisting.path !== entry.path) {
       errors.push(
@@ -535,7 +549,7 @@ function scanTarball(archiveBytes: Buffer): {
     const parts = entry.path.split("/");
     for (let index = 1; index < parts.length; index += 1) {
       const ancestor = portablePaths.get(
-        parts.slice(0, index).join("/").normalize("NFC").toLowerCase(),
+        portableExtractionPathKey(parts.slice(0, index).join("/")),
       );
       if (ancestor?.kind === "file") {
         errors.push(
@@ -578,9 +592,10 @@ let tarFileEntries: string[];
 try {
   // Both passes consume one private byte snapshot, so path replacement cannot
   // make preflight approve different bytes than extraction materializes.
-  const archiveBytes = fs.readFileSync(tarball);
-  fs.writeFileSync(archiveSnapshot, archiveBytes, { mode: 0o400 });
-  ({ entries: normalized, files: tarFileEntries } = scanTarball(archiveBytes));
+  fs.chmodSync(archiveRoot, 0o700);
+  fs.copyFileSync(tarball, archiveSnapshot, fs.constants.COPYFILE_EXCL);
+  fs.chmodSync(archiveSnapshot, 0o400);
+  ({ entries: normalized, files: tarFileEntries } = scanTarball(archiveSnapshot));
   fs.mkdirSync(extractDir);
   runPhase("tar extract", () =>
     extractTar({
