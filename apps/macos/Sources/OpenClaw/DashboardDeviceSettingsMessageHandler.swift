@@ -4,7 +4,9 @@ import Observation
 import WebKit
 
 @MainActor
-final class DashboardDeviceSettingsMessageHandler: NSObject, WKScriptMessageHandler {
+final class DashboardDeviceSettingsMessageHandler: NSObject, WKScriptMessageHandlerWithReply {
+    typealias ReplyHandler = @MainActor (Any?, String?) -> Void
+
     weak var owner: DashboardWindowController?
     private var observers: [NSObjectProtocol] = []
     private var observationGeneration = 0
@@ -13,8 +15,16 @@ final class DashboardDeviceSettingsMessageHandler: NSObject, WKScriptMessageHand
     private var refreshTask: Task<Void, Never>?
     private var consentAlert: NSAlert?
 
-    func userContentController(_: WKUserContentController, didReceive message: WKScriptMessage) {
-        self.owner?.receiveDeviceSettingsMessage(message)
+    func userContentController(
+        _: WKUserContentController,
+        didReceive message: WKScriptMessage,
+        replyHandler: @escaping ReplyHandler)
+    {
+        guard let owner = self.owner else {
+            replyHandler(nil, "The device settings window is no longer available.")
+            return
+        }
+        owner.receiveDeviceSettingsMessage(message, replyHandler: replyHandler)
     }
 
     func startObserving() {
@@ -65,12 +75,37 @@ final class DashboardDeviceSettingsMessageHandler: NSObject, WKScriptMessageHand
         self.stopObserving()
     }
 
-    func enqueue(_ request: DeviceSettingsRequest?, sourceID: String) {
+    func enqueue(
+        _ request: DeviceSettingsRequest,
+        sourceID: String,
+        replyHandler: @escaping ReplyHandler)
+    {
+        // WebKit rejects the original Promise when cancellation drops an uncalled reply handler.
+        // Keep it owned by this queued operation so retired documents cannot leave pending writes.
         self.requests.enqueue { [weak self] in
             guard let self, !self.observers.isEmpty, let owner = self.owner,
-                  owner.notificationSourceID == sourceID
-            else { return }
+                  owner.canUseDeviceSettings(sourceID: sourceID)
+            else {
+                replyHandler(nil, "The device settings document is no longer available.")
+                return
+            }
             await owner.applyDeviceSettingsRequest(request)
+            let snapshot: DeviceSettingsSnapshot? = if case .set = request {
+                await owner.readDeviceSettingsSnapshot(sourceID: sourceID)
+            } else {
+                nil
+            }
+            guard owner.canUseDeviceSettings(sourceID: sourceID) else {
+                replyHandler(nil, "The device settings document is no longer available.")
+                return
+            }
+            do {
+                let reply: Any = try snapshot.map { try JSONSerialization.jsonObject(with: JSONEncoder().encode($0)) }
+                    ?? NSNull()
+                replyHandler(reply, nil)
+            } catch {
+                replyHandler(nil, "Device settings could not be read. Try again.")
+            }
         }
     }
 

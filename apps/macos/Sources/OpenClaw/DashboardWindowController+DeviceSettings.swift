@@ -11,11 +11,17 @@ extension Notification.Name {
 extension DashboardWindowController {
     static let deviceSettingsMessageHandlerName = "openclawDeviceSettings"
 
-    func receiveDeviceSettingsMessage(_ message: WKScriptMessage) {
+    func receiveDeviceSettingsMessage(
+        _ message: WKScriptMessage,
+        replyHandler: @escaping DashboardDeviceSettingsMessageHandler.ReplyHandler)
+    {
         guard message.name == Self.deviceSettingsMessageHandlerName,
-              message.webView === self.webView, message.frameInfo.isMainFrame
-        else { return }
-        let request = DeviceSettingsRequest(body: message.body)
+              message.webView === self.webView, message.frameInfo.isMainFrame,
+              let request = DeviceSettingsRequest(body: message.body)
+        else {
+            replyHandler(nil, "Invalid device settings request.")
+            return
+        }
         if self.isShowingFailurePage,
            message.frameInfo.request.url?.absoluteString == "about:blank",
            self.webView.url?.absoluteString == "about:blank",
@@ -23,13 +29,18 @@ extension DashboardWindowController {
         {
             // Only this action belongs to the native-authored error document. It never receives device data.
             AppNavigationActions.openConnection()
+            replyHandler(NSNull(), nil)
             return
         }
-        guard Self.isTrustedLinkSource(message.frameInfo.request.url, dashboardURL: self.currentURL) else { return }
-        self.deviceSettingsMessageHandler.enqueue(request, sourceID: self.notificationSourceID)
+        guard Self.isTrustedLinkSource(message.frameInfo.request.url, dashboardURL: self.currentURL) else {
+            replyHandler(nil, "The device settings document is no longer available.")
+            return
+        }
+        self.deviceSettingsMessageHandler.enqueue(
+            request, sourceID: self.notificationSourceID, replyHandler: replyHandler)
     }
 
-    func applyDeviceSettingsRequest(_ request: DeviceSettingsRequest?) async {
+    func applyDeviceSettingsRequest(_ request: DeviceSettingsRequest) async {
         switch request {
         case .status:
             await self.publishDeviceSettings()
@@ -47,8 +58,6 @@ extension DashboardWindowController {
             await self.openDeviceSettingsPanel(panel)
         case .checkForUpdates:
             if self.updater?.isAvailable == true { self.updater?.checkForUpdates(nil) }
-        case nil:
-            break
         }
         // All Gateway windows show settings for this Mac; mutations must update each open view.
         NotificationCenter.default.post(name: .openclawDeviceSettingsChanged, object: nil)
@@ -69,8 +78,7 @@ extension DashboardWindowController {
         // Origin trust is not user intent: Gateway-authored pages cannot enable sensitive access on their own.
         let sourceID = self.notificationSourceID
         guard await self.deviceSettingsMessageHandler.confirm(consent) else { return false }
-        return !Task.isCancelled && self.isWindowOpen && self.notificationSourceID == sourceID &&
-            !self.isShowingFailurePage && Self.isTrustedLinkSource(self.webView.url, dashboardURL: self.currentURL)
+        return self.canUseDeviceSettings(sourceID: sourceID)
     }
 
     private static let booleanStateSettings: [DeviceSettingKey: ReferenceWritableKeyPath<AppState, Bool>] = [

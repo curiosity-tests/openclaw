@@ -168,7 +168,8 @@ final class DashboardWindowController: NSWindowController, WKNavigationDelegate,
         config.userContentController.add(notificationsMessageHandler, name: Self.notificationsMessageHandlerName)
         let deviceSettingsMessageHandler = DashboardDeviceSettingsMessageHandler()
         self.deviceSettingsMessageHandler = deviceSettingsMessageHandler
-        config.userContentController.add(deviceSettingsMessageHandler, name: Self.deviceSettingsMessageHandlerName)
+        config.userContentController.addScriptMessageHandler(
+            deviceSettingsMessageHandler, contentWorld: .page, name: Self.deviceSettingsMessageHandlerName)
         let gatewaysMessageHandler = DashboardGatewaysMessageHandler()
         config.userContentController.add(gatewaysMessageHandler, name: Self.gatewaysMessageHandlerName)
         let commandsMessageHandler = DashboardCommandsMessageHandler()

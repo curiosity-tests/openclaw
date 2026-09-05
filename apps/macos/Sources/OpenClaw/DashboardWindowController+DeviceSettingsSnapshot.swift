@@ -10,18 +10,23 @@ import WebKit
 extension DashboardWindowController {
     func publishDeviceSettings() async {
         let sourceID = self.notificationSourceID
-        guard self.canPublishDeviceSettings else { return }
-        let entries = await Self.devicePermissionEntries()
-        let snapshot = self.deviceSettingsSnapshot(permissions: entries)
-        // Permission reads can outlive a document; never deliver device data into its replacement.
-        guard !Task.isCancelled, self.notificationSourceID == sourceID, self.canPublishDeviceSettings,
-              let script = try? snapshot.javaScript()
+        guard let snapshot = await self.readDeviceSettingsSnapshot(sourceID: sourceID),
+              self.canUseDeviceSettings(sourceID: sourceID), let script = try? snapshot.javaScript()
         else { return }
         _ = try? await self.webView.evaluateJavaScript(script)
     }
 
-    private var canPublishDeviceSettings: Bool {
-        !self.isShowingFailurePage &&
+    func readDeviceSettingsSnapshot(sourceID: String) async -> DeviceSettingsSnapshot? {
+        guard self.canUseDeviceSettings(sourceID: sourceID) else { return nil }
+        let entries = await Self.devicePermissionEntries()
+        // Permission reads can outlive a document; never deliver device data into its replacement.
+        guard self.canUseDeviceSettings(sourceID: sourceID) else { return nil }
+        return self.deviceSettingsSnapshot(permissions: entries)
+    }
+
+    func canUseDeviceSettings(sourceID: String) -> Bool {
+        !Task.isCancelled && self.notificationSourceID == sourceID && self.isWindowOpen &&
+            !self.isShowingFailurePage &&
             Self.isTrustedLinkSource(self.webView.url, dashboardURL: self.currentURL)
     }
 

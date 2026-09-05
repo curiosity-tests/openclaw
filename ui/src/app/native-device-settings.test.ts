@@ -1,5 +1,6 @@
 /* @vitest-environment jsdom */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createDeferred } from "../../../test/helpers/promise.js";
 import { createNativeDeviceSettingsSnapshot } from "../test-helpers/native-device-settings.ts";
 import {
   createNativeDeviceSettingsCapability,
@@ -14,7 +15,7 @@ afterEach(() => {
 });
 
 function installBridge(snapshot: unknown = createNativeDeviceSettingsSnapshot()) {
-  const post = vi.fn<(message: unknown) => void>();
+  const post = vi.fn<(message: unknown) => Promise<unknown>>().mockResolvedValue(snapshot);
   vi.stubGlobal("webkit", { messageHandlers: { openclawDeviceSettings: { postMessage: post } } });
   vi.stubGlobal("__OPENCLAW_NATIVE_DEVICE_SETTINGS__", snapshot);
   capability = createNativeDeviceSettingsCapability();
@@ -134,6 +135,51 @@ describe("native device settings wire contract", () => {
     publish(next);
     expect(post).not.toHaveBeenCalled();
     expect(capability?.snapshot?.app.showDockIcon).toBe(true);
+  });
+
+  it("settles a rejected edit with native state before notifying the current subscriber", async () => {
+    const post = installBridge();
+    const reply = createDeferred<unknown>();
+    post.mockReturnValueOnce(reply.promise);
+    let pending = "rejected-profile";
+    const settled = vi.fn(() => {
+      pending = "";
+    });
+    capability!.set("browser.cookieSync.targetProfile", pending, settled);
+    const observed: string[] = [];
+    capability!.subscribe(() =>
+      observed.push(pending || capability!.snapshot!.browser.cookieSync.targetProfile),
+    );
+    reply.resolve(createNativeDeviceSettingsSnapshot());
+    await vi.waitFor(() => expect(observed).toEqual(["default"]));
+    expect(settled).toHaveBeenCalledTimes(1);
+  });
+
+  it("settles transport rejection without changing native state and ignores replies after disposal", async () => {
+    const post = installBridge();
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const rejected = createDeferred<unknown>();
+    post.mockReturnValueOnce(rejected.promise);
+    const settled = vi.fn();
+    const listener = vi.fn();
+    capability!.subscribe(listener);
+    capability!.set("browser.cookieSync.targetProfile", "rejected", settled);
+    rejected.reject(new Error("Document retired"));
+    await vi.waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
+    expect(listener).toHaveBeenCalledWith(createNativeDeviceSettingsSnapshot());
+    expect(warning).toHaveBeenCalledTimes(1);
+    const delayed = createDeferred<unknown>();
+    post.mockReturnValueOnce(delayed.promise);
+    capability!.set("app.showDockIcon", false, settled);
+    capability!.dispose();
+    const next = createNativeDeviceSettingsSnapshot();
+    next.app.showDockIcon = false;
+    delayed.resolve(next);
+    await delayed.promise;
+    expect(capability!.snapshot!.app.showDockIcon).toBe(true);
+    expect(settled).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledTimes(1);
+    warning.mockRestore();
   });
 
   it("posts exact native commands without optimistically changing the owner snapshot", () => {

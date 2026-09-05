@@ -25,7 +25,9 @@ Using or Always, or from While Using to Always) and enabling precise location
 also require confirmation. Adding cookie domains requires confirmation even
 before sync is enabled; changing the destination requires it while sync is
 enabled. Disabling these capabilities or decreasing location access takes
-effect without native confirmation.
+effect without native confirmation. Cancelling a cookie-domain or destination
+change restores the displayed native value; a newer edit stays pending until
+its own confirmation finishes.
 
 ## Requirements for stable permissions
 
