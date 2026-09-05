@@ -13,6 +13,20 @@ becomes `/openclaw/chat/main` when the base path is `/openclaw`.
 
 ## Session and dashboard URLs
 
+**Copy → Session link** uses the connected Gateway's public Control UI address
+when `gateway.publicOrigin` is configured, including its
+`gateway.controlUi.basePath`. This keeps links shareable when the desktop app
+connects through a local SSH tunnel. Without a public origin, copied links use
+the connected Gateway's HTTP(S) address; a tunnel-only address remains local.
+Normal navigation and **Open in** continue using the current UI. Copied links
+contain no connection credentials, and recipients still need Gateway access.
+
+The Dashboards gallery adds `?dashboard=expanded` to the owning task's chat
+link, for example `/chat/main/deploy-monitor-6db92d48?dashboard=expanded`.
+This makes Dashboard the main view and focuses it. **Restore split** brings
+the side panel alongside the dashboard. Ordinary task navigation restores the browser's
+saved task arrangement instead of forcing a dashboard-only view.
+
 Chat and dashboard views are parallel route namespaces:
 
 ```text
@@ -133,6 +147,38 @@ identify the native source. Opening the same source under different agents
 keeps their panes and drafts separate, including in split view. Continuing a
 thread navigates to the adopted OpenClaw session link. The same catalog query
 also works under `/dashboard/<agentId>`.
+
+## Person activity URLs
+
+Open a person's recent sessions with a readable Activity link:
+
+```text
+/activity/ada-12345678abcd
+/activity/ada-12345678abcd?time=30d&q=release
+```
+
+New links use the person's display-name slug and the first 12 lowercase
+hexadecimal characters of their profile UUID, with UUID dashes omitted. The
+name is decorative: renamed people and stale names still resolve by the id
+prefix. A missing name produces a bare-prefix link.
+
+Prefixes from 8 through 32 hexadecimal characters are accepted. If a prefix
+matches several profiles, Activity shows an error instead of choosing a person.
+Recorded profile identities in retained sessions still resolve if their profile
+row is missing; they also participate in ambiguity checks before session filters.
+For restricted readers, lookup uses only caller-visible session associations;
+hidden draft and incognito sessions cannot affect resolution or ambiguity.
+Search, time windows, and pagination do not narrow that visibility scope.
+Use a longer prefix, the full 32-character compact UUID, or the full dashed
+UUID to select the exact profile. Names never break a tie.
+
+Existing `/activity?person=<profile-id>` links remain accepted and are replaced
+with the person path after resolution, without adding browser history. Search
+and time filters remain query parameters. Exact UUID bookmarks retain all 32
+hexadecimal characters, and unresolved IDs never redirect to a shorter prefix.
+Clearing the person filter returns
+to `/activity` while retaining those filters. Normal Gateway authentication
+and session visibility rules apply to every form.
 
 ## Focus presentation routes
 

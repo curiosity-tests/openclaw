@@ -9,6 +9,7 @@ import {
 } from "./methods/core-descriptors.js";
 import { GATEWAY_AUX_METHODS } from "./server-aux-methods.js";
 import { GATEWAY_EVENTS, listGatewayMethods } from "./server-methods-list.js";
+import { LEGACY_ADVERTISED_GATEWAY_METHODS } from "./server-methods-list.test-fixtures.js";
 import { coreGatewayHandlers } from "./server-methods.js";
 
 describe("GATEWAY_EVENTS", () => {
@@ -167,12 +168,15 @@ describe("listGatewayMethods", () => {
     const expectedSuffix = [...expectedMethodsAfterModelProbe, ...pluginDiscoveryMethods];
     expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
     const methods = listGatewayMethods();
-    expect(methods.indexOf("node.pluginSurface.refresh")).toBe(
-      methods.indexOf("node.describe") + 1,
-    );
-    expect(methods.indexOf("node.pluginTools.update")).toBe(
-      methods.indexOf("node.pluginSurface.refresh") + 1,
-    );
+    const legacyCount = LEGACY_ADVERTISED_GATEWAY_METHODS.length;
+
+    expect(methods.slice(0, legacyCount)).toEqual(LEGACY_ADVERTISED_GATEWAY_METHODS);
+    expect(methods.slice(legacyCount, legacyCount + 4)).toEqual([
+      "plugins.controlUi.list",
+      "plugins.controlUi.reload",
+      "plugins.controlUi.report",
+      "plugins.controlUi.status",
+    ]);
   });
 
   it("advertises ClawHub skill trust methods", () => {
@@ -206,9 +210,9 @@ describe("listGatewayMethods", () => {
     expect(coreGatewayHandlers["audit.run.inspect"]).toBeTypeOf("function");
   });
 
-  it("advertises the update campaign hold method", () => {
-    expect(listGatewayMethods()).toContain("update.hold");
-    expect(coreGatewayHandlers["update.hold"]).toBeTypeOf("function");
+  it.each(["update.hold", "update.runs.get", "update.runs.list"])("advertises %s", (method) => {
+    expect(listGatewayMethods()).toContain(method);
+    expect(coreGatewayHandlers[method]).toBeTypeOf("function");
   });
 
   it("keeps deprecated restart preflight compatibility read-only and advertised", () => {
