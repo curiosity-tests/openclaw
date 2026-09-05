@@ -26,9 +26,12 @@ const catalogMocks = vi.hoisted(() => ({
 
 vi.mock("../../plugins/management-service.js", () => ({
   inspectManagedPlugin: (...args: unknown[]) => managementMocks.inspect(...args),
-  installManagedPlugin: (...args: unknown[]) => managementMocks.install(...args),
   listManagedPlugins: (...args: unknown[]) => managementMocks.list(...args),
   refreshManagedPluginMetadata: (...args: unknown[]) => managementMocks.refreshMetadata(...args),
+}));
+
+vi.mock("../../plugins/management-mutations.js", () => ({
+  installManagedPlugin: (...args: unknown[]) => managementMocks.install(...args),
   setManagedPluginEnabled: (...args: unknown[]) => managementMocks.setEnabled(...args),
   uninstallManagedPlugin: (...args: unknown[]) => managementMocks.uninstall(...args),
 }));
