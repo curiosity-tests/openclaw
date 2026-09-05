@@ -198,10 +198,18 @@ export function joinClawHubPluginCatalog(params: {
 }
 
 function localDiscoveryCategory(category: string | undefined): string {
-  if (category === "channel") return "channels";
-  if (category === "provider") return "models";
-  if (category === "context-engine") return "context";
-  if (category === "tool") return "tools";
+  if (category === "channel") {
+    return "channels";
+  }
+  if (category === "provider") {
+    return "models";
+  }
+  if (category === "context-engine") {
+    return "context";
+  }
+  if (category === "tool") {
+    return "tools";
+  }
   return category || "other";
 }
 

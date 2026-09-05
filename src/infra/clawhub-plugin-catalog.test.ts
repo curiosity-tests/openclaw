@@ -13,6 +13,10 @@ function jsonResponse(value: unknown): Response {
   });
 }
 
+function requestUrl(input: string | URL | Request): string {
+  return typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+}
+
 const remotePlugin = {
   name: "memory-plus",
   displayName: "Memory Plus",
@@ -32,7 +36,7 @@ describe("ClawHub plugin catalog client", () => {
   it("reads every official page for bundled publication classification", async () => {
     const requestedUrls: string[] = [];
     const fetchImpl = vi.fn(async (input: string | URL | Request) => {
-      const url = new URL(String(input));
+      const url = new URL(requestUrl(input));
       requestedUrls.push(`${url.pathname}${url.search}`);
       return jsonResponse(
         url.searchParams.has("cursor")
@@ -65,7 +69,7 @@ describe("ClawHub plugin catalog client", () => {
   it("browses the combined plugin endpoint with an opaque cursor", async () => {
     let requestedUrl = "";
     const fetchImpl = vi.fn(async (input: string | URL | Request) => {
-      requestedUrl = String(input);
+      requestedUrl = requestUrl(input);
       return jsonResponse({ items: [remotePlugin], nextCursor: "pkgplugins:{opaque}" });
     });
 
@@ -110,7 +114,7 @@ describe("ClawHub plugin catalog client", () => {
   it("uses plugin search without inventing pagination", async () => {
     let requestedUrl = "";
     const fetchImpl = vi.fn(async (input: string | URL | Request) => {
-      requestedUrl = String(input);
+      requestedUrl = requestUrl(input);
       return jsonResponse({ results: [{ score: 9, package: remotePlugin }] });
     });
 
@@ -136,7 +140,7 @@ describe("ClawHub plugin catalog client", () => {
   it("uses ClawHub's featured filter without overriding its canonical order", async () => {
     let requestedUrl = "";
     const fetchImpl = vi.fn(async (input: string | URL | Request) => {
-      requestedUrl = String(input);
+      requestedUrl = requestUrl(input);
       return jsonResponse({ items: [remotePlugin] });
     });
 
@@ -236,7 +240,7 @@ describe("ClawHub plugin catalog client", () => {
   it("assembles normalized detail from ClawHub package metadata and release endpoints", async () => {
     const requestedUrls: string[] = [];
     const fetchImpl = vi.fn(async (input: string | URL | Request) => {
-      const url = new URL(String(input));
+      const url = new URL(requestUrl(input));
       requestedUrls.push(`${url.pathname}${url.search}`);
       if (url.pathname.endsWith("/versions")) {
         return jsonResponse({

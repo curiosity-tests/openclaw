@@ -272,12 +272,15 @@ function parseManifest(value: Record<string, unknown> | undefined): {
         "description",
         `plugin config field ${index}`,
       );
-      return {
+      const field: ClawHubPluginConfigField = {
         name: readRequiredClawHubStringField(entry, "name", `plugin config field ${index}`),
         required: readRequiredBoolean(entry, "required", `plugin config field ${index}`),
         sensitive: readRequiredBoolean(entry, "sensitive", `plugin config field ${index}`),
-        ...(description ? { description } : {}),
       };
+      if (description) {
+        field.description = description;
+      }
+      return field;
     }),
     mcpServers: mcpServers.map((entry, index) => {
       if (!isRecord(entry)) {
@@ -290,10 +293,13 @@ function parseManifest(value: Record<string, unknown> | undefined): {
         throw new Error(`Malformed ClawHub bundled skill ${index}: expected an object.`);
       }
       const description = readClawHubStringField(entry, "description", `bundled skill ${index}`);
-      return {
+      const skill: { name: string; description?: string } = {
         name: readRequiredClawHubStringField(entry, "name", `bundled skill ${index}`),
-        ...(description ? { description } : {}),
       };
+      if (description) {
+        skill.description = description;
+      }
+      return skill;
     }),
   };
 }
@@ -456,7 +462,9 @@ export async function fetchAllOfficialClawHubPlugins(
     if (cursor && seenCursors.has(cursor)) {
       throw new Error("ClawHub official catalog repeated a pagination cursor");
     }
-    if (cursor) seenCursors.add(cursor);
+    if (cursor) {
+      seenCursors.add(cursor);
+    }
   } while (cursor);
   return items;
 }
