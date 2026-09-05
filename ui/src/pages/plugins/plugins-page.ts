@@ -313,9 +313,7 @@ class PluginsPage extends OpenClawLightDomElement {
 
   private applyRouteData() {
     const data = this.routeData;
-    this.routeDataConsumed = true;
     if (!data) {
-      this.ensureInitialData();
       return;
     }
     const detailPluginId =
@@ -365,7 +363,10 @@ class PluginsPage extends OpenClawLightDomElement {
   }
 
   private get loading(): boolean {
-    return this.gateway.connected && this.catalogTask.status === TaskStatus.PENDING;
+    return (
+      this.gateway.connected &&
+      (!this.routeDataConsumed || this.catalogTask.status === TaskStatus.PENDING)
+    );
   }
 
   private get discoveryLoading(): boolean {
@@ -373,7 +374,9 @@ class PluginsPage extends OpenClawLightDomElement {
   }
 
   private ensureInitialData() {
+    // The route owns initial loading; a warm page module can render before its data arrives.
     if (
+      !this.routeDataConsumed ||
       !this.gateway.connected ||
       !this.gateway.client ||
       (this.routeData && !this.routeDataConsumed)

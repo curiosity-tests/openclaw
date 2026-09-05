@@ -1,7 +1,9 @@
 // Explicit schema exports keep public protocol changes reviewable.
 export * from "./schema/sessions-goal.js";
+export * from "./schema/human-mentions.js";
 export * from "./public-schema-push.js";
 export * from "./public-schema-users.js";
+export * from "./public-schema-plugins.js";
 export {
   isCloudWorkerPlacementState,
   ConnectParamsSchema,
@@ -658,12 +660,20 @@ export {
   QuestionWaitAnswerParamsSchema,
   QuestionWaitAnswerResultSchema,
   ChatHistoryParamsSchema,
+  ChatStartupParamsSchema,
   ChatMetadataParamsSchema,
   ChatSendParamsSchema,
   ChatInjectParamsSchema,
   ChatToolTitlesParamsSchema,
   ChatToolTitlesResultSchema,
   UpdateRunParamsSchema,
+  UpdateRunRecordSchema,
+  UpdateRunResultSchema,
+  UpdateRunsGetParamsSchema,
+  UpdateRunsGetResultSchema,
+  UpdateRunsListParamsSchema,
+  UpdateRunsListResultSchema,
+  UpdateRunChangedEventSchema,
   TickEventSchema,
   ShutdownEventSchema,
   ProjectRecentSchema,
