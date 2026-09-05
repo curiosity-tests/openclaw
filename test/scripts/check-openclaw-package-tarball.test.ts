@@ -8,11 +8,14 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, delimiter, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
+import { gzipSync } from "node:zlib";
 import { gte as semverGte, valid as validSemver } from "semver";
+import { Header, type HeaderData, Pax } from "tar";
 import { describe, expect, it } from "vitest";
 import { LOCAL_BUILD_METADATA_DIST_PATHS } from "../../scripts/lib/local-build-metadata-paths.mts";
 import {
@@ -25,7 +28,6 @@ import { resolvePnpmRunner } from "../../scripts/pnpm-runner.mts";
 
 const CHECK_SCRIPT = "scripts/check-openclaw-package-tarball.mts";
 const PUBLIC_CHECK_SCRIPT = "scripts/check-openclaw-package-tarball.mjs";
-const NODE_DEFAULT_SPAWN_MAX_BUFFER_BYTES = 1024 * 1024;
 const CODE_MODE_WORKER_PATH = "dist/agents/code-mode.worker.js";
 const FIRST_CODE_MODE_WORKER_VERSION = "2026.5.14-beta.2";
 const FLAT_PLUGIN_SDK_DECLARATION = "dist/plugin-sdk/provider-entry.d.ts";
@@ -69,6 +71,59 @@ function listFilesRecursively(dir: string, prefix = ""): string[] {
       ? listFilesRecursively(join(dir, entry.name), relativePath)
       : [relativePath];
   });
+}
+
+function writeCraftedTarball(
+  tarball: string,
+  entries: Array<HeaderData & { body?: Buffer | string; pax?: HeaderData }>,
+) {
+  const blocks: Buffer[] = [];
+  for (const { body = "", pax, ...data } of entries) {
+    const contents = Buffer.isBuffer(body) ? body : Buffer.from(body);
+    const headerData = {
+      gid: 0,
+      mode: data.type === "Directory" ? 0o755 : 0o644,
+      mtime: new Date(0),
+      size: contents.length,
+      uid: 0,
+      ...data,
+    };
+    if (pax) {
+      blocks.push(new Pax({ ...headerData, ...pax }).encode());
+    }
+    const header = new Header(headerData);
+    const headerBlock = Buffer.alloc(512);
+    if (header.encode(headerBlock) && !pax) {
+      blocks.push(new Pax(headerData).encode());
+    }
+    blocks.push(headerBlock, contents);
+    const padding = contents.length % 512;
+    if (padding !== 0) {
+      blocks.push(Buffer.alloc(512 - padding));
+    }
+  }
+  blocks.push(Buffer.alloc(1024));
+  writeFileSync(tarball, gzipSync(Buffer.concat(blocks)));
+}
+
+function checkCraftedTarball(
+  entries: Array<HeaderData & { body?: Buffer | string; pax?: HeaderData }>,
+  expectedErrors: string | string[],
+) {
+  const root = mkdtempSync(join(tmpdir(), "openclaw-package-tarball-crafted-"));
+  try {
+    const tarball = join(root, "crafted.tgz");
+    writeCraftedTarball(tarball, entries);
+    const result = spawnSync(process.execPath, [resolve(CHECK_SCRIPT), tarball], {
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(1);
+    for (const expectedError of Array.isArray(expectedErrors) ? expectedErrors : [expectedErrors]) {
+      expect(result.stderr).toContain(expectedError);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 }
 
 function withTarball(
@@ -227,6 +282,7 @@ function withTarball(
           {
             cwd: root,
             encoding: "utf8",
+            env: { ...process.env, COPYFILE_DISABLE: "1" },
           },
         );
     expect(pack.status, pack.stderr || pack.error?.message).toBe(0);
@@ -317,90 +373,17 @@ describe("check-openclaw-package-tarball", () => {
     expect(extra.stderr).not.toContain("OpenClaw package tarball does not exist");
   });
 
-  it.skipIf(process.platform === "win32").each(["relative", "empty"])(
-    "validates packages without executing archive-neighbor gzip (%s PATH)",
-    (pathKind) => {
-      withTarball(["dist/index.js"], { "dist/index.js": "export {};\n" }, (tarball) => {
-        const callerDir = join(dirname(tarball), "caller");
-        const pathEntry = pathKind === "relative" ? "bin" : "";
-        const archiveGzip = join(dirname(tarball), pathEntry, "gzip");
-        mkdirSync(callerDir);
-        mkdirSync(dirname(archiveGzip), { recursive: true });
-        // GNU tar looks up gzip through PATH; an archive must not become that lookup's cwd.
-        writeFileSync(archiveGzip, '#!/bin/sh\n: > "$0.executed"\nexit 73\n', { mode: 0o755 });
-        const result = spawnSync(process.execPath, [resolve(CHECK_SCRIPT), tarball], {
-          cwd: callerDir,
-          encoding: "utf8",
-          env: { ...process.env, PATH: `${pathEntry}${delimiter}${process.env.PATH ?? ""}` },
-        });
-        expect.soft(existsSync(`${archiveGzip}.executed`)).toBe(false);
-        expect(result.status, result.stderr).toBe(0);
-        expect(result.stdout).toContain("OpenClaw package tarball integrity passed.");
-      });
-    },
-  );
-
-  it.skipIf(process.platform === "win32")("rejects owner-only tar entry modes", () => {
-    const root = mkdtempSync(join(tmpdir(), "openclaw-package-tarball-modes-"));
-    try {
-      const packageRoot = join(root, "package");
-      mkdirSync(join(packageRoot, "dist"), { recursive: true });
-      writeFileSync(
-        join(packageRoot, "package.json"),
-        JSON.stringify({ name: "openclaw", version: "2026.8.26" }),
-      );
-      writeFileSync(join(packageRoot, "dist", "index.js"), "export {};\n");
-      chmodTreeWorldReadable(packageRoot);
-      chmodSync(join(packageRoot, "dist", "index.js"), 0o600);
-      const tarball = join(root, "openclaw.tgz");
-      const pack = spawnSync("tar", ["-czf", `./${basename(tarball)}`, "package"], {
-        cwd: root,
-        encoding: "utf8",
-      });
-      expect(pack.status, pack.stderr).toBe(0);
-
-      const result = spawnSync("node", [CHECK_SCRIPT, tarball], { encoding: "utf8" });
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain(
-        "tar entry is not world-readable (-rw-------): package/dist/index.js",
-      );
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("accepts tarballs whose entry list exceeds Node's default spawn buffer", () => {
-    const longNameSuffix = "x".repeat(80);
-    const largeEntryList = Object.fromEntries(
-      Array.from({ length: 8_000 }, (_, index) => [
-        `dist/control-ui/assets/large-entry-list/asset-${String(index).padStart(5, "0")}-${longNameSuffix}.txt`,
-        "",
-      ]),
-    );
-
-    withTarball(
-      ["dist/index.js"],
-      { "dist/index.js": "export {};\n", ...largeEntryList },
-      (tarball) => {
-        const listing = spawnSync("tar", ["-tf", `./${basename(tarball)}`], {
-          cwd: dirname(tarball),
-          encoding: "utf8",
-          maxBuffer: NODE_DEFAULT_SPAWN_MAX_BUFFER_BYTES * 2,
-        });
-        expect(listing.status, listing.stderr).toBe(0);
-        expect(Buffer.byteLength(listing.stdout)).toBeGreaterThan(
-          NODE_DEFAULT_SPAWN_MAX_BUFFER_BYTES,
-        );
-
-        const result = spawnSync("node", [resolve(CHECK_SCRIPT), basename(tarball)], {
-          cwd: dirname(tarball),
-          encoding: "utf8",
-        });
-
-        expect(result.status, result.stderr).toBe(0);
-        expect(result.stdout).toContain("OpenClaw package tarball integrity passed.");
-      },
+  it("rejects owner-only tar entry modes", () => {
+    checkCraftedTarball(
+      [
+        {
+          path: "package/package.json",
+          type: "File",
+          mode: 0o600,
+          body: '{"name":"openclaw","version":"2026.9.4"}\n',
+        },
+      ],
+      "tar entry is not world-readable (0600): package/package.json",
     );
   });
 
@@ -454,77 +437,266 @@ describe("check-openclaw-package-tarball", () => {
     );
   });
 
-  it.skipIf(process.platform === "win32")("rejects duplicate tar file paths", () => {
-    withTarball(["dist/index.js"], { "dist/index.js": "export {};\n" }, (_, root) => {
-      const tarball = join(root, "duplicate-path.tgz");
-      const pack = spawnSync(
-        "tar",
-        ["-czf", `./${basename(tarball)}`, "package", "package/dist/index.js"],
-        {
-          cwd: root,
-          encoding: "utf8",
-        },
-      );
-      expect(pack.status, pack.stderr).toBe(0);
-
-      const result = spawnSync(process.execPath, [resolve(CHECK_SCRIPT), tarball], {
-        encoding: "utf8",
-      });
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain("package tarball contains duplicate paths: dist/index.js");
+  it("accepts archives without explicit directory entries", () => {
+    checkTarball({
+      options: { filesOnlyArchive: true },
+      status: 0,
+      successText: true,
     });
   });
 
-  it.runIf(process.platform !== "win32")(
-    "resolves caller-relative tar and removes the extract dir when extraction fails",
+  it.skipIf(process.platform === "win32")(
+    "rejects an archive package.json symlink before changing its external target",
     () => {
-      const root = mkdtempSync(join(tmpdir(), "openclaw-package-tarball-extract-fail-"));
+      const root = mkdtempSync(join(tmpdir(), "openclaw-package-tarball-link-"));
+      const externalRoot = mkdtempSync("/tmp/openclaw-package-link-target-");
       try {
-        const fakeBin = join(root, "bin");
-        mkdirSync(fakeBin);
-        const extractDirFile = join(root, "extract-dir.txt");
-        const fakeTar = join(fakeBin, "tar");
+        const externalManifestPath = join(externalRoot, "package.json");
+        const capturePath = join(root, "npm-pack-capture.json");
+        const originalBytes = Buffer.from(
+          '{"name":"openclaw","version":"2026.9.4","scripts":{"prepack":"exit 99"}}\n',
+        );
+        writeFileSync(externalManifestPath, originalBytes);
+        chmodSync(externalManifestPath, 0o444);
+        const originalMode = statSync(externalManifestPath).mode;
+        const tarball = join(root, "linked-package-json.tgz");
+        writeCraftedTarball(tarball, [
+          {
+            path: "package/package.json",
+            type: "SymbolicLink",
+            linkpath: externalManifestPath,
+          },
+        ]);
+
+        const toolchainRoot = join(root, "toolchain");
+        const fakeNode = join(toolchainRoot, "bin", "node");
+        const fakeNpm = join(toolchainRoot, "lib", "node_modules", "npm", "bin", "npm-cli.js");
+        mkdirSync(dirname(fakeNode), { recursive: true });
+        mkdirSync(dirname(fakeNpm), { recursive: true });
+        writeFileSync(fakeNode, `#!/bin/sh\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
         writeFileSync(
-          fakeTar,
+          fakeNpm,
           [
-            "#!/usr/bin/env node",
             "const fs = require('node:fs');",
-            "const args = process.argv.slice(2);",
-            "if (args[0].includes('v')) { console.log('-rw-r--r-- 0/0 0 2026-08-29 package/package.json'); process.exit(0); }",
-            "if (args[0].includes('t')) { console.log('package/package.json'); process.exit(0); }",
-            "if (!args[0].includes('x')) { throw new Error('unexpected tar operation'); }",
-            "const outputDir = args[args.indexOf('-C') + 1];",
-            "if (!fs.statSync(outputDir).isDirectory()) { throw new Error('missing extract dir'); }",
-            "fs.writeFileSync(process.env.OPENCLAW_TEST_EXTRACT_DIR_FILE, outputDir);",
-            "console.error('extract denied');",
-            "process.exit(7);",
+            "if (process.argv.includes('--version')) { process.stdout.write('11.19.0\\n'); process.exit(0); }",
+            "fs.writeFileSync(process.env.OPENCLAW_TEST_NPM_CAPTURE, JSON.stringify({",
+            "  bytes: fs.readFileSync('package.json', 'utf8'),",
+            "  mode: fs.statSync('package.json').mode,",
+            "}));",
+            "process.stdout.write(JSON.stringify([{ files: [{ path: 'package.json' }] }]));",
           ].join("\n"),
         );
-        chmodSync(fakeTar, 0o755);
-        const tarball = join(root, "openclaw.tgz");
-        writeFileSync(tarball, "not used by fake tar");
+        const preload = join(root, "fake-exec-path.cjs");
+        writeFileSync(
+          preload,
+          "Object.defineProperty(process, 'execPath', { value: process.env.OPENCLAW_TEST_EXEC_PATH });\n",
+        );
 
-        const result = spawnSync("node", [CHECK_SCRIPT, tarball], {
+        const result = spawnSync(process.execPath, [resolve(CHECK_SCRIPT), tarball], {
           encoding: "utf8",
           env: {
             ...process.env,
-            OPENCLAW_TEST_EXTRACT_DIR_FILE: extractDirFile,
-            PATH: `${relative(process.cwd(), fakeBin)}${delimiter}${process.env.PATH ?? ""}`,
+            NODE_OPTIONS: `--require=${preload}`,
+            OPENCLAW_TEST_EXEC_PATH: fakeNode,
+            OPENCLAW_TEST_NPM_CAPTURE: capturePath,
           },
         });
 
-        expect(result.status).not.toBe(0);
-        expect(result.stderr).toContain("extract denied");
-        expect(result.stderr).toMatch(/tar -x(?:z)?f failed/u);
-        const extractDir = readFileSync(extractDirFile, "utf8");
-        expect(isAbsolute(extractDir)).toBe(true);
-        expect(existsSync(extractDir)).toBe(false);
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain(
+          "unsupported tar entry type SymbolicLink: package/package.json",
+        );
+        expect(existsSync(capturePath)).toBe(false);
+        expect(readFileSync(externalManifestPath)).toEqual(originalBytes);
+        expect(statSync(externalManifestPath).mode).toBe(originalMode);
       } finally {
         rmSync(root, { recursive: true, force: true });
+        rmSync(externalRoot, { recursive: true, force: true });
       }
     },
   );
+
+  it.each([
+    {
+      name: "absolute path",
+      entries: [{ path: "/package/package.json", type: "File" as const, body: "{}\n" }],
+      error: "unsafe tar entry path: /package/package.json",
+    },
+    {
+      name: "drive-relative path",
+      entries: [{ path: "C:package/package.json", type: "File" as const, body: "{}\n" }],
+      error: "unsafe tar entry path: C:package/package.json",
+    },
+    {
+      name: "drive-absolute path",
+      entries: [{ path: "C:/package/package.json", type: "File" as const, body: "{}\n" }],
+      error: "unsafe tar entry path: C:/package/package.json",
+    },
+    {
+      name: "UNC path",
+      entries: [{ path: "//server/package/package.json", type: "File" as const, body: "{}\n" }],
+      error: "unsafe tar entry path: //server/package/package.json",
+    },
+    {
+      name: "backslash path",
+      entries: [{ path: "package\\package.json", type: "File" as const, body: "{}\n" }],
+      error: "unsafe tar entry path: package\\package.json",
+    },
+    {
+      name: "PAX backslash path",
+      entries: [
+        {
+          path: "package/package.json",
+          type: "File" as const,
+          body: "{}\n",
+          pax: { path: "package\\package.json" },
+        },
+      ],
+      error: "unsafe tar entry path: package\\package.json",
+    },
+    {
+      name: "PAX final path outside package root",
+      entries: [
+        {
+          path: `package/${"prefix".repeat(16)}/placeholder`,
+          type: "File" as const,
+          body: "{}\n",
+          pax: { path: "evil" },
+        },
+      ],
+      error: "tar entry is outside package/: evil",
+    },
+    {
+      name: "empty path segment",
+      entries: [{ path: "package//package.json", type: "File" as const, body: "{}\n" }],
+      error: "unsafe tar entry path: package//package.json",
+    },
+    {
+      name: "dot segment",
+      entries: [{ path: "package/./package.json", type: "File" as const, body: "{}\n" }],
+      error: "unsafe tar entry path: package/./package.json",
+    },
+    {
+      name: "dotdot segment",
+      entries: [{ path: "package/../package.json", type: "File" as const, body: "{}\n" }],
+      error: "unsafe tar entry path: package/../package.json",
+    },
+    {
+      name: "outside package root",
+      entries: [{ path: "other/package.json", type: "File" as const, body: "{}\n" }],
+      error: "tar entry is outside package/: other/package.json",
+    },
+  ])("rejects crafted archive $name", ({ entries, error }) => {
+    checkCraftedTarball(entries, error);
+  });
+
+  it.each([
+    { type: "SymbolicLink" as const, linkpath: "package/target" },
+    { type: "Link" as const, linkpath: "package/target" },
+    { type: "CharacterDevice" as const },
+    { type: "FIFO" as const },
+    { type: "SparseFile" as const },
+  ])("rejects crafted $type entries", ({ type, linkpath }) => {
+    checkCraftedTarball(
+      [{ path: "package/package.json", type, linkpath }],
+      `unsupported tar entry type ${type}: package/package.json`,
+    );
+  });
+
+  it("rejects final PAX link metadata on regular files", () => {
+    checkCraftedTarball(
+      [
+        {
+          path: "package/package.json",
+          type: "File",
+          body: "{}\n",
+          pax: { linkpath: "package/target" },
+        },
+      ],
+      "unsupported tar entry type File: package/package.json",
+    );
+  });
+
+  it.each([
+    {
+      name: "exact duplicate",
+      entries: [
+        { path: "package/package.json", type: "File" as const, body: "{}\n" },
+        { path: "package/dist/index.js", type: "File" as const, body: "one\n" },
+        { path: "package/dist/index.js", type: "File" as const, body: "two\n" },
+      ],
+      error: "package tarball contains duplicate paths: package/dist/index.js",
+    },
+    {
+      name: "multiple manifests",
+      entries: [
+        { path: "package/package.json", type: "File" as const, body: "{}\n" },
+        { path: "package/package.json", type: "File" as const, body: "{}\n" },
+      ],
+      error: [
+        "package tarball contains duplicate paths: package/package.json",
+        "package tarball must contain exactly one regular package/package.json (found 2)",
+      ],
+    },
+    {
+      name: "file-directory conflict",
+      entries: [
+        { path: "package/package.json", type: "File" as const, body: "{}\n" },
+        { path: "package/dist", type: "File" as const, body: "not a directory\n" },
+        { path: "package/dist/", type: "Directory" as const },
+      ],
+      error: "package tarball contains file-directory conflict: package/dist",
+    },
+    {
+      name: "file-ancestor conflict",
+      entries: [
+        { path: "package/package.json", type: "File" as const, body: "{}\n" },
+        { path: "package/dist", type: "File" as const, body: "not a directory\n" },
+        { path: "package/dist/index.js", type: "File" as const, body: "export {};\n" },
+      ],
+      error: "package tarball contains file-ancestor conflict: package/dist, package/dist/index.js",
+    },
+    {
+      name: "portable file-ancestor conflict",
+      entries: [
+        { path: "package/package.json", type: "File" as const, body: "{}\n" },
+        { path: "package/FOO", type: "File" as const, body: "not a directory\n" },
+        { path: "package/foo/bar", type: "File" as const, body: "export {};\n" },
+      ],
+      error: "package tarball contains file-ancestor conflict: package/FOO, package/foo/bar",
+    },
+    {
+      name: "portable case collision",
+      entries: [
+        { path: "package/package.json", type: "File" as const, body: "{}\n" },
+        { path: "package/README.md", type: "File" as const, body: "one\n" },
+        { path: "package/readme.md", type: "File" as const, body: "two\n" },
+      ],
+      error:
+        "package tarball contains portable path collision: package/README.md, package/readme.md",
+    },
+    {
+      name: "portable NFC collision",
+      entries: [
+        { path: "package/package.json", type: "File" as const, body: "{}\n" },
+        { path: "package/caf\u00e9.txt", type: "File" as const, body: "one\n" },
+        { path: "package/cafe\u0301.txt", type: "File" as const, body: "two\n" },
+      ],
+      error: "package tarball contains portable path collision:",
+    },
+    {
+      name: "missing manifest",
+      entries: [{ path: "package/dist/index.js", type: "File" as const, body: "export {};\n" }],
+      error: "package tarball must contain exactly one regular package/package.json (found 0)",
+    },
+    {
+      name: "manifest directory",
+      entries: [{ path: "package/package.json/", type: "Directory" as const }],
+      error: "package tarball must contain exactly one regular package/package.json (found 0)",
+    },
+  ])("rejects crafted archive with $name", ({ entries, error }) => {
+    checkCraftedTarball(entries, error);
+  });
 
   const legacyInventoryCases: NamedTarballCheck[] = [
     {

@@ -9,6 +9,7 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 import { gte as semverGte, valid as validSemver } from "semver";
+import { extract as extractTar, list as listTar, type ReadEntry } from "tar";
 import { coerceErrorMessage } from "./lib/error-format.mts";
 import { LOCAL_BUILD_METADATA_DIST_PATHS } from "./lib/local-build-metadata-paths.mts";
 import { collectNpmPackInventory, compareNpmPackInventory } from "./lib/npm-pack-inventory.mts";
@@ -388,8 +389,6 @@ function collectMissingDeclaredPackageFileErrors(
 }
 
 const phaseTimingsEnabled = process.env.OPENCLAW_PACKAGE_TARBALL_CHECK_TIMINGS !== "0";
-// Self-contained artifacts can exceed Node's 1 MiB spawnSync output default.
-const TAR_LIST_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 const NPM_PACK_INVENTORY_TIMEOUT_MS = 5 * 60 * 1_000;
 const NPM_PACK_DIAGNOSTIC_PATH_LIMIT = 20;
 // npm 11 and 12 disagree on shrinkwrap packlist inclusion. Its dedicated
@@ -407,80 +406,196 @@ function runPhase<Result>(label: string, action: () => Result): Result {
   }
 }
 
-// Stream npm's gzip archives without changing cwd: tar and its decompressor must
-// retain caller PATH semantics. Only -C needs GNU tar's forward-slash encoding.
-function runTar(label: string, mode: "-tzf" | "-tvzf" | "-xzf", destination?: string) {
-  const directoryArgs = destination ? ["-C", destination.split(path.sep).join("/")] : [];
-  return runPhase(label, () => {
-    const inputFd = fs.openSync(tarball, "r");
-    try {
-      return spawnSync("tar", [mode, "-", ...directoryArgs], {
-        encoding: "utf8",
-        ...(mode === "-xzf" ? {} : { maxBuffer: TAR_LIST_MAX_BUFFER_BYTES }),
-        stdio: [inputFd, "pipe", "pipe"],
-      });
-    } finally {
-      fs.closeSync(inputFd);
+type MaterialTarEntry = {
+  kind: "directory" | "file";
+  path: string;
+};
+
+function canonicalMaterialPath(entry: ReadEntry, errors: string[]): string | null {
+  const rawPath = entry.header.path ?? "";
+  const parseParts = (candidate: string): string[] | null => {
+    const parts = candidate.split("/");
+    if (
+      candidate.includes("\\") ||
+      candidate.startsWith("/") ||
+      /^[A-Za-z]:/u.test(candidate) ||
+      parts.some(
+        (part, index) =>
+          part === "." ||
+          part === ".." ||
+          (part === "" && index > 0 && !(entry.type === "Directory" && index === parts.length - 1)),
+      )
+    ) {
+      return null;
     }
-  });
-}
-
-const list = runTar("tar list", "-tzf");
-if (list.status !== 0) {
-  fail(`tar -tzf failed for ${tarball}: ${list.stderr || list.error?.message || list.status}`);
-}
-
-const verboseList = runTar("tar mode list", "-tvzf");
-if (verboseList.status !== 0) {
-  fail(
-    `tar -tvzf failed for ${tarball}: ${verboseList.stderr || verboseList.error?.message || verboseList.status}`,
-  );
-}
-
-// System tar and mode-preserving installers extract entry modes verbatim, so
-// an owner-only (0600/0700) entry packed on a restrictive-umask host can leave
-// a root-installed CLI unreadable for non-root users. Require a+rX everywhere.
-function collectTarballEntryModeErrors(verboseListing: string): string[] {
-  const modeErrors: string[] = [];
-  for (const line of verboseListing.split(/\r?\n/u)) {
-    const modeString = line.trimStart().split(/\s+/u, 1)[0] ?? "";
-    // Symlinks and hardlinks carry no install-mode contract of their own.
-    if (!/^[-d][rwxsStT-]{9}$/u.test(modeString)) {
-      continue;
+    if (entry.type === "Directory" && parts.at(-1) === "") {
+      parts.pop();
     }
-    // Lowercase x/s/t mean the exec bit is set; uppercase S/T mean it is not.
-    const execAt = (index: number) => /^[xst]$/u.test(modeString.charAt(index));
-    const needsExec = modeString.startsWith("d") || execAt(3) || execAt(6) || execAt(9);
-    const worldReadable = modeString.charAt(4) === "r" && modeString.charAt(7) === "r";
-    const worldExecutable = execAt(6) && execAt(9);
-    if (!worldReadable || (needsExec && !worldExecutable)) {
-      modeErrors.push(
-        `tar entry is not world-readable (${modeString}): ${line.trim().split(/\s+/u).at(-1)}`,
+    return parts;
+  };
+  const rawParts = parseParts(rawPath);
+  if (!rawParts) {
+    errors.push(`unsafe tar entry path: ${rawPath || "<empty>"}`);
+    return null;
+  }
+  const finalPath = entry.path;
+  const parts = finalPath === rawPath ? rawParts : parseParts(finalPath);
+  if (!parts) {
+    errors.push(`unsafe tar entry path: ${finalPath || "<empty>"}`);
+    return null;
+  }
+  if (
+    parts[0] !== "package" ||
+    (parts.length === 1 && entry.type !== "Directory") ||
+    parts.some(
+      (part, index) =>
+        part === "" && index > 0 && !(entry.type === "Directory" && index === parts.length - 1),
+    )
+  ) {
+    errors.push(`tar entry is outside package/: ${finalPath || "<empty>"}`);
+    return null;
+  }
+  return parts.join("/");
+}
+
+function scanTarball(archiveBytes: Buffer): {
+  entries: string[];
+  files: string[];
+} {
+  const errors: string[] = [];
+  const materialEntries: MaterialTarEntry[] = [];
+  const inspectEntry = (entry: ReadEntry) => {
+    const rawPath = entry.header.path ?? entry.path;
+    if (
+      entry.unsupported ||
+      entry.invalid ||
+      (entry.type !== "File" && entry.type !== "Directory") ||
+      Boolean(entry.linkpath)
+    ) {
+      errors.push(`unsupported tar entry type ${entry.type}: ${rawPath}`);
+      return;
+    }
+    const materialPath = canonicalMaterialPath(entry, errors);
+    if (!materialPath) {
+      return;
+    }
+    if (entry.type === "Directory" && entry.size !== 0) {
+      errors.push(`tar directory entry has nonzero size: ${rawPath}`);
+    }
+    const mode = entry.mode;
+    const needsExec = entry.type === "Directory" || (mode !== undefined && (mode & 0o111) !== 0);
+    if (mode === undefined || (mode & 0o444) !== 0o444 || (needsExec && (mode & 0o111) !== 0o111)) {
+      errors.push(
+        `tar entry is not world-readable (${mode === undefined ? "<missing>" : `0${mode.toString(8)}`}): ${rawPath}`,
       );
     }
+    materialEntries.push({
+      kind: entry.type === "Directory" ? "directory" : "file",
+      path: materialPath,
+    });
+  };
+
+  runPhase("tar preflight", () => {
+    let parseError: Error | undefined;
+    const parser = listTar({ sync: true, strict: true, onReadEntry: inspectEntry });
+    parser.on("ignoredEntry", inspectEntry);
+    parser.on("error", (error: Error) => {
+      parseError = error;
+    });
+    parser.end(archiveBytes);
+    if (parseError) {
+      throw parseError;
+    }
+  });
+
+  const exactPaths = new Map<string, MaterialTarEntry>();
+  const portablePaths = new Map<string, MaterialTarEntry>();
+  for (const entry of materialEntries) {
+    const existing = exactPaths.get(entry.path);
+    if (existing) {
+      errors.push(
+        existing.kind === entry.kind
+          ? `package tarball contains duplicate paths: ${entry.path}`
+          : `package tarball contains file-directory conflict: ${entry.path}`,
+      );
+    } else {
+      exactPaths.set(entry.path, entry);
+    }
+    const portablePath = entry.path.normalize("NFC").toLowerCase();
+    const portableExisting = portablePaths.get(portablePath);
+    if (portableExisting && portableExisting.path !== entry.path) {
+      errors.push(
+        `package tarball contains portable path collision: ${portableExisting.path}, ${entry.path}`,
+      );
+    } else {
+      portablePaths.set(portablePath, entry);
+    }
   }
-  return modeErrors;
+  for (const entry of exactPaths.values()) {
+    const parts = entry.path.split("/");
+    for (let index = 1; index < parts.length; index += 1) {
+      const ancestor = portablePaths.get(
+        parts.slice(0, index).join("/").normalize("NFC").toLowerCase(),
+      );
+      if (ancestor?.kind === "file") {
+        errors.push(
+          `package tarball contains file-ancestor conflict: ${ancestor.path}, ${entry.path}`,
+        );
+        break;
+      }
+    }
+  }
+  const packageManifests = materialEntries.filter(
+    (entry) => entry.path === "package/package.json" && entry.kind === "file",
+  );
+  if (packageManifests.length !== 1) {
+    errors.push(
+      `package tarball must contain exactly one regular package/package.json (found ${packageManifests.length})`,
+    );
+  }
+  if (errors.length > 0) {
+    throw new Error(errors.join("\n"));
+  }
+
+  return {
+    entries: [...exactPaths.values()]
+      .filter((entry) => entry.path !== "package")
+      .map((entry) => {
+        const relativePath = entry.path.slice("package/".length);
+        return entry.kind === "directory" ? `${relativePath}/` : relativePath;
+      }),
+    files: [...exactPaths.values()]
+      .filter((entry) => entry.kind === "file")
+      .map((entry) => entry.path.slice("package/".length)),
+  };
 }
 
-const extractDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-package-tarball-"));
+const archiveRoot = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-package-tarball-"));
+const archiveSnapshot = path.join(archiveRoot, "candidate.tgz");
+const extractDir = path.join(archiveRoot, "extract");
+let normalized: string[];
+let tarFileEntries: string[];
 try {
-  const extract = runTar("tar extract", "-xzf", extractDir);
-  if (extract.status !== 0) {
-    fs.rmSync(extractDir, { recursive: true, force: true });
-    fail(`tar -xzf failed for ${tarball}: ${extract.stderr || extract.status}`);
-  }
+  // Both passes consume one private byte snapshot, so path replacement cannot
+  // make preflight approve different bytes than extraction materializes.
+  const archiveBytes = fs.readFileSync(tarball);
+  fs.writeFileSync(archiveSnapshot, archiveBytes, { mode: 0o400 });
+  ({ entries: normalized, files: tarFileEntries } = scanTarball(archiveBytes));
+  fs.mkdirSync(extractDir);
+  runPhase("tar extract", () =>
+    extractTar({
+      cwd: extractDir,
+      file: archiveSnapshot,
+      preserveOwner: false,
+      strict: true,
+      sync: true,
+    }),
+  );
 } catch (error) {
-  fs.rmSync(extractDir, { recursive: true, force: true });
-  throw error;
+  fs.rmSync(archiveRoot, { recursive: true, force: true });
+  fail(`OpenClaw package tarball preflight failed:\n${coerceErrorMessage(error)}`);
 }
-
-const entries = list.stdout
-  .split(/\r?\n/u)
-  .map((entry) => entry.trim())
-  .filter(Boolean);
-const normalized = entries.map((entry) => entry.replace(/^package\//u, ""));
 const entrySet = new Set(normalized);
-const tarFileEntries = normalized.filter((entry) => entry && !entry.endsWith("/"));
 const errors: string[] = [];
 const warnings: string[] = [];
 const CODE_MODE_WORKER_PATH = "dist/agents/code-mode.worker.js";
@@ -576,14 +691,6 @@ const extractedPackageRoot = fs.realpathSync(
     ? path.join(extractDir, "package")
     : extractDir,
 );
-
-for (const entry of normalized) {
-  if (entry.startsWith("/") || entry.split("/").includes("..")) {
-    errors.push(`unsafe tar entry: ${entry}`);
-  }
-}
-
-errors.push(...collectTarballEntryModeErrors(verboseList.stdout));
 
 if (!entrySet.has("package.json")) {
   errors.push("missing package.json");
@@ -702,16 +809,6 @@ if (hasShrinkwrap && declaresShrinkwrap) {
   }
 }
 
-const duplicateTarPaths = tarFileEntries.filter(
-  (entry, index) => tarFileEntries.indexOf(entry) !== index,
-);
-if (duplicateTarPaths.length > 0) {
-  errors.push(
-    `package tarball contains duplicate paths: ${[...new Set(duplicateTarPaths)]
-      .slice(0, NPM_PACK_DIAGNOSTIC_PATH_LIMIT)
-      .join(", ")}`,
-  );
-}
 try {
   const npmInventory = collectNpmPackInventory(extractedPackageRoot, {
     timeoutMs: NPM_PACK_INVENTORY_TIMEOUT_MS,
@@ -812,12 +909,12 @@ errors.push(
 );
 
 if (errors.length > 0) {
-  fs.rmSync(extractDir, { recursive: true, force: true });
+  fs.rmSync(archiveRoot, { recursive: true, force: true });
   fail(`OpenClaw package tarball integrity failed:\n${errors.join("\n")}`);
 }
 
 for (const warning of warnings) {
   console.warn(`OpenClaw package tarball integrity warning: ${warning}`);
 }
-fs.rmSync(extractDir, { recursive: true, force: true });
+fs.rmSync(archiveRoot, { recursive: true, force: true });
 console.log("OpenClaw package tarball integrity passed.");
