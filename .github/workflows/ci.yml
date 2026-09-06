@@ -2149,7 +2149,7 @@ jobs:
           build-all-cache-scope: full
           # The trusted warmer publishes exact dependencies for Blacksmith.
           # Gate on the actual runner so hybrid hosted retries stay store-only.
-          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw') && 'true' || 'false' }}
+          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw') && 'true' || 'false' }}
 
       - name: Restore dist build cache
         id: dist_build_cache
@@ -2553,7 +2553,7 @@ jobs:
         with:
           cache-mode: ${{ needs.preflight.outputs.cache_mode }}
           install-bun: "false"
-          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw') && 'true' || 'false' }}
+          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw') && 'true' || 'false' }}
 
       - name: Check Control UI performance against base
         shell: bash
@@ -2597,7 +2597,7 @@ jobs:
         with:
           cache-mode: ${{ needs.preflight.outputs.cache_mode }}
           install-bun: "false"
-          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw') && 'true' || 'false' }}
+          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw') && 'true' || 'false' }}
 
       - name: Verify native app i18n source
         run: |
@@ -2659,7 +2659,7 @@ jobs:
           cache-mode: ${{ needs.preflight.outputs.cache_mode }}
           node-version: "24.x"
           install-bun: "false"
-          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw') && 'true' || 'false' }}
+          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw') && 'true' || 'false' }}
           restore-test-caches: ${{ (needs.preflight.outputs.runner_profile == 'github' || needs.preflight.outputs.runner_profile == 'hybrid') && 'true' || 'false' }}
 
       - &cache_playwright_chromium
@@ -2752,7 +2752,7 @@ jobs:
           cache-mode: ${{ needs.preflight.outputs.cache_mode }}
           node-version: "24.x"
           install-bun: "false"
-          dependency-cache: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || runner.environment != 'self-hosted' || 'push' == 'workflow_dispatch' || ('push' == 'pull_request' && github.run_attempt > 1)) && 'false' || (github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw') && 'true' || 'false') }}
+          dependency-cache: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || runner.environment != 'self-hosted' || 'push' == 'workflow_dispatch' || ('push' == 'pull_request' && github.run_attempt > 1)) && 'false' || (github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw') && 'true' || 'false') }}
           restore-test-caches: ${{ (needs.preflight.outputs.runner_profile == 'github' || needs.preflight.outputs.runner_profile == 'hybrid') && 'true' || 'false' }}
 
       - *cache_playwright_chromium
@@ -2845,7 +2845,7 @@ jobs:
           cache-mode: ${{ needs.preflight.outputs.cache_mode }}
           node-version: "24.x"
           install-bun: "false"
-          dependency-cache: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || runner.environment != 'self-hosted' || 'push' == 'workflow_dispatch' || ('push' == 'pull_request' && github.run_attempt > 1)) && 'false' || (github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw') && 'true' || 'false') }}
+          dependency-cache: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || runner.environment != 'self-hosted' || 'push' == 'workflow_dispatch' || ('push' == 'pull_request' && github.run_attempt > 1)) && 'false' || (github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw') && 'true' || 'false') }}
 
       - *cache_playwright_chromium
       - *install_playwright_chromium
@@ -2919,7 +2919,7 @@ jobs:
           cache-mode: ${{ needs.preflight.outputs.cache_mode }}
           node-version: "24.x"
           install-bun: "false"
-          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw') && 'true' || 'false' }}
+          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw') && 'true' || 'false' }}
 
       - name: Verify Control UI i18n source
         run: |
@@ -3036,7 +3036,7 @@ jobs:
         with:
           cache-mode: ${{ needs.preflight.outputs.cache_mode }}
           install-bun: ${{ matrix.task == 'bun-launcher' && 'true' || 'false' }}
-          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw') && 'true' || 'false' }}
+          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw') && 'true' || 'false' }}
           restore-test-caches: ${{ (needs.preflight.outputs.runner_profile == 'github' || needs.preflight.outputs.runner_profile == 'hybrid') && (matrix.task == 'bundled-protocol' || matrix.task == 'contracts-plugins-ci-routing' || matrix.task == 'ci-routing' || matrix.task == 'bun-launcher') && 'true' || 'false' }}
 
       - name: Run ${{ matrix.task }} (${{ matrix.runtime }})
@@ -3149,7 +3149,7 @@ jobs:
         with:
           cache-mode: ${{ needs.preflight.outputs.cache_mode }}
           install-bun: "false"
-          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw') && 'true' || 'false' }}
+          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw') && 'true' || 'false' }}
           # Reader of build-artifacts' protected daily archive: warms tsdown
           # tooling plus the repeated openclaw.mjs boots in the scenario loop.
           node-compile-cache: "true"
@@ -3345,7 +3345,7 @@ jobs:
         with:
           cache-mode: ${{ needs.preflight.outputs.cache_mode }}
           install-bun: "false"
-          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw') && 'true' || 'false' }}
+          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw') && 'true' || 'false' }}
           restore-test-caches: ${{ (needs.preflight.outputs.runner_profile == 'github' || needs.preflight.outputs.runner_profile == 'hybrid') && 'true' || 'false' }}
 
       - name: Run plugin contract shard
@@ -3420,7 +3420,7 @@ jobs:
         with:
           cache-mode: ${{ needs.preflight.outputs.cache_mode }}
           install-bun: "false"
-          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw') && 'true' || 'false' }}
+          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw') && 'true' || 'false' }}
           restore-test-caches: ${{ (needs.preflight.outputs.runner_profile == 'github' || needs.preflight.outputs.runner_profile == 'hybrid') && 'true' || 'false' }}
 
       - name: Run channel contract shard
@@ -3501,7 +3501,7 @@ jobs:
           node-version: "${{ matrix.node_version || '24.x' }}"
           install-bun: "false"
           # The trusted warmer seeds Node 24; other versions use the store.
-          dependency-cache: ${{ (matrix.node_version == null || matrix.node_version == '24.x') && vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw') && 'true' || 'false' }}
+          dependency-cache: ${{ (matrix.node_version == null || matrix.node_version == '24.x') && vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw') && 'true' || 'false' }}
           vitest-fs-cache: "true"
           node-compile-cache: "true"
           node-compile-cache-scope: "test"
@@ -3730,7 +3730,7 @@ jobs:
         with:
           cache-mode: ${{ needs.preflight.outputs.cache_mode }}
           install-bun: "false"
-          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw') && 'true' || 'false' }}
+          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw') && 'true' || 'false' }}
 
       - name: Compute extension boundary input fingerprint
         id: extension-boundary-inputs
@@ -3766,7 +3766,7 @@ jobs:
       # the shared sticky. Strictly read-only (commit: false): only the
       # protected boundary lane may publish this repository-global snapshot.
       - name: Mount extension boundary sticky disk
-        if: matrix.task == 'lint' && steps.extension-boundary-inputs.outputs.enabled == 'true' && vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && vars.OPENCLAW_CI_RUNNER_BACKEND != 'hybrid' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw')
+        if: matrix.task == 'lint' && steps.extension-boundary-inputs.outputs.enabled == 'true' && vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && vars.OPENCLAW_CI_RUNNER_BACKEND != 'hybrid' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw')
         uses: useblacksmith/stickydisk@35ba2e331a80056a42af053ee54968511de2b7c7 # v1.5.0
         with:
           # One stable disk for the whole repository. The v1 per-PR/per-config
@@ -3779,7 +3779,7 @@ jobs:
           commit: "false"
 
       - name: Restore extension boundary artifacts from sticky disk
-        if: matrix.task == 'lint' && steps.extension-boundary-inputs.outputs.enabled == 'true' && vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && vars.OPENCLAW_CI_RUNNER_BACKEND != 'hybrid' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw')
+        if: matrix.task == 'lint' && steps.extension-boundary-inputs.outputs.enabled == 'true' && vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && vars.OPENCLAW_CI_RUNNER_BACKEND != 'hybrid' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw')
         shell: bash
         run: |
           set -euo pipefail
@@ -4098,7 +4098,7 @@ jobs:
         with:
           cache-mode: ${{ needs.preflight.outputs.cache_mode }}
           install-bun: "false"
-          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw') && 'true' || 'false' }}
+          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw') && 'true' || 'false' }}
 
       - name: Compute extension boundary input fingerprint
         id: extension-boundary-inputs
@@ -4205,7 +4205,7 @@ jobs:
         with:
           cache-mode: ${{ needs.preflight.outputs.cache_mode }}
           install-bun: "false"
-          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw') && 'true' || 'false' }}
+          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw') && 'true' || 'false' }}
 
       - name: Run hosted core test-types stripe
         shell: bash
@@ -4267,7 +4267,7 @@ jobs:
         with:
           cache-mode: ${{ needs.preflight.outputs.cache_mode }}
           install-bun: "false"
-          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw') && 'true' || 'false' }}
+          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw') && 'true' || 'false' }}
 
       - name: Compute extension boundary input fingerprint
         id: extension-boundary-inputs
@@ -4291,7 +4291,7 @@ jobs:
       # plugin-sdk declarations. Fork PRs must never produce writable
       # repository-global snapshots, so they keep the GitHub cache path.
       - name: Mount extension boundary sticky disk
-        if: matrix.group == 'extension-package-boundary' && steps.extension-boundary-inputs.outputs.enabled == 'true' && vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && vars.OPENCLAW_CI_RUNNER_BACKEND != 'hybrid' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw')
+        if: matrix.group == 'extension-package-boundary' && steps.extension-boundary-inputs.outputs.enabled == 'true' && vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && vars.OPENCLAW_CI_RUNNER_BACKEND != 'hybrid' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw')
         uses: useblacksmith/stickydisk@35ba2e331a80056a42af053ee54968511de2b7c7 # v1.5.0
         with:
           # One stable disk for the whole repository. The v1 per-PR/per-config
@@ -4312,7 +4312,7 @@ jobs:
 
       - name: Restore extension boundary artifacts from sticky disk
         id: boundary-sticky-restore
-        if: matrix.group == 'extension-package-boundary' && steps.extension-boundary-inputs.outputs.enabled == 'true' && vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && vars.OPENCLAW_CI_RUNNER_BACKEND != 'hybrid' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw')
+        if: matrix.group == 'extension-package-boundary' && steps.extension-boundary-inputs.outputs.enabled == 'true' && vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && vars.OPENCLAW_CI_RUNNER_BACKEND != 'hybrid' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw')
         shell: bash
         run: |
           set -euo pipefail
@@ -4541,7 +4541,7 @@ jobs:
         with:
           cache-mode: ${{ needs.preflight.outputs.cache_mode }}
           install-bun: "false"
-          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw') && 'true' || 'false' }}
+          dependency-cache: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && runner.environment == 'self-hosted' && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw') && 'true' || 'false' }}
 
       - name: Check formatting
         if: needs.preflight.outputs.run_format_check == 'true'
@@ -4704,7 +4704,7 @@ jobs:
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) && 'ubuntu-24.04' || ('push' == 'workflow_dispatch' || ('push' == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && github.run_attempt > 1)) && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'ubuntu-latest' || 'ubuntu-24.04') }}
     # Hosted build-play owns three memory-bounded Gradle invocations. Reevaluate
     # its budget on retries, which can reuse the first attempt's preflight matrix.
-    timeout-minutes: ${{ matrix.task == 'build-play' && (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) || 'push' == 'workflow_dispatch' || ('push' == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && github.run_attempt > 1) || github.repository != 'curiosity-tests/openclaw' || ('push' == 'pull_request' && !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association))) && 35 || 20 }}
+    timeout-minutes: ${{ matrix.task == 'build-play' && (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) || 'push' == 'workflow_dispatch' || ('push' == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && github.run_attempt > 1) || github.repository != 'openclaw/openclaw' || ('push' == 'pull_request' && !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association))) && 35 || 20 }}
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -4758,7 +4758,7 @@ jobs:
       # repository-global snapshots, so they keep the GitHub cache path (their
       # runs-on already selects non-Blacksmith ubuntu-24.04 runners).
       - name: Mount Gradle sticky disk
-        if: vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && !(vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw')
+        if: vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && !(vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw')
         uses: useblacksmith/stickydisk@35ba2e331a80056a42af053ee54968511de2b7c7 # v1.5.0
         with:
           # One stable disk per matrix task. The v1 per-PR/per-dependency-hash
@@ -4780,7 +4780,7 @@ jobs:
           commit: ${{ 'push' != 'pull_request' && 'true' || 'false' }}
 
       - name: Point Gradle at the sticky disk
-        if: vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && !(vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw')
+        if: vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && !(vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) && 'push' != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw')
         shell: bash
         env:
           # Gradle caches are content-addressed, so a stale snapshot is safe
@@ -4841,7 +4841,7 @@ jobs:
       - name: Run Android ${{ matrix.task }}
         working-directory: apps/android
         env:
-          CI_RUNNER_BACKEND: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) || 'push' == 'workflow_dispatch' || github.repository != 'curiosity-tests/openclaw' || ('push' == 'pull_request' && github.event.pull_request.head.repo.full_name != 'curiosity-tests/openclaw')) && 'github' || 'blacksmith' }}
+          CI_RUNNER_BACKEND: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) || 'push' == 'workflow_dispatch' || github.repository != 'openclaw/openclaw' || ('push' == 'pull_request' && github.event.pull_request.head.repo.full_name != 'openclaw/openclaw')) && 'github' || 'blacksmith' }}
           TASK: ${{ matrix.task }}
         shell: bash
         run: |
@@ -4953,7 +4953,7 @@ jobs:
           cache-mode: ${{ needs.preflight.outputs.cache_mode }}
           node-version: "24.x"
           install-bun: "false"
-          dependency-cache: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || runner.environment != 'self-hosted' || 'push' == 'workflow_dispatch' || ('push' == 'pull_request' && github.run_attempt > 1)) && 'false' || (github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'curiosity-tests/openclaw') && 'true' || 'false') }}
+          dependency-cache: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || runner.environment != 'self-hosted' || 'push' == 'workflow_dispatch' || ('push' == 'pull_request' && github.run_attempt > 1)) && 'false' || (github.repository == 'openclaw/openclaw' && ('push' != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw') && 'true' || 'false') }}
 
       - name: Report runner resources
         run: |
